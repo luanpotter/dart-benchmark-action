@@ -10,3 +10,10 @@ branding:
 runs:
   using: node20
   main: dist/index.js
+
+inputs:
+  paths:
+    description:
+      'Comma-separated list of paths to directories of Dart projects containing
+      benchmarks to run.'
+    required: true
