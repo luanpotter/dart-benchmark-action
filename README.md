@@ -1,5 +1,7 @@
 # Dart Benchmark Action
 
+A GitHub action to run benchmarks on Dart/Flutter projects and libraries.
+
 ## Setup
 
 To build:
