@@ -1,21 +1,22 @@
 {
-  "name": "typescript-action",
-  "description": "GitHub Actions TypeScript template",
-  "version": "0.0.0",
-  "author": "",
+  "name": "dart-benchmark-action",
+  "description": "A GitHub action to run benchmarks on Dart/Flutter projects and libraries.",
+  "version": "0.1.0",
+  "author": "Luan Nico",
   "private": true,
-  "homepage": "https://github.com/actions/typescript-action",
+  "homepage": "https://github.com/luanpotter/dart-benchmark-action",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/actions/typescript-action.git"
+    "url": "git+https://github.com/luanpotter/dart-benchmark-action.git"
   },
   "bugs": {
-    "url": "https://github.com/actions/typescript-action/issues"
+    "url": "https://github.com/luanpotter/dart-benchmark-action/issues"
   },
   "keywords": [
-    "actions",
-    "node",
-    "setup"
+    "dart",
+    "benchmark",
+    "GitHub",
+    "action"
   ],
   "exports": {
     ".": "./dist/index.js"
