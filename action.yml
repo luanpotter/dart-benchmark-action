@@ -1,6 +1,6 @@
 name: 'Dart Benchmark Action'
 description:
-  'A GitHub action to run benchmarks on Dart/Flutter projects and libraries.'
+  'A GitHub Action to run benchmarks on Dart/Flutter projects and libraries.'
 author: 'Luan Nico'
 
 branding:

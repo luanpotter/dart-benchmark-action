@@ -1,6 +1,6 @@
 {
 	"name": "dart-benchmark-action",
-	"description": "A GitHub action to run benchmarks on Dart/Flutter projects and libraries.",
+	"description": "A GitHub Action to run benchmarks on Dart/Flutter projects and libraries.",
 	"version": "0.1.0",
 	"author": "Luan Nico",
 	"private": true,
