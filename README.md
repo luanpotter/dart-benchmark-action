@@ -5,7 +5,7 @@
 
 A GitHub Action to run benchmarks on Dart/Flutter projects and libraries.
 
-In order to use it, add to your GitHub repo:
+In order to use it, add it as an Action to your GitHub repository:
 
 ```yaml
 name: Benchmark
@@ -22,9 +22,9 @@ jobs:
           paths: '<path-to-your-dart-project>,<more>'
 ```
 
-## Setup
+## Local Setup
 
-To build:
+To build, lint, and run tests locally, run:
 
 ```bash
   npm install
