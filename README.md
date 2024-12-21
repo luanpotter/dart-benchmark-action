@@ -16,12 +16,11 @@ jobs:
   benchmark:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-    - uses: luanpotter/dart-benchmark-action@v1
-      with:
-        paths: "<path-to-your-dart-project>,<more>"
+      - uses: actions/checkout@v2
+      - uses: luanpotter/dart-benchmark-action@v1
+        with:
+          paths: '<path-to-your-dart-project>,<more>'
 ```
-
 
 ## Setup
 
