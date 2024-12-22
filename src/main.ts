@@ -168,7 +168,7 @@ async function executeCommand(
 	});
 
 	if (error) {
-		throw new Error(error);
+		throw new Error(`Command ${[command, ...args].join(' ')} error: ${error}`);
 	}
 
 	return output;
