@@ -18,12 +18,12 @@ export class BenchmarkOutput {
 		}
 	}
 
-	getCommentBody(): string | undefined {
-		if (this.output === undefined) {
-			return undefined;
+	getMessage(): string {
+		const score = this.getScore();
+		if (score === 0) {
+			return '[ERROR]';
 		}
-
-		return `${this.getScore()} us`;
+		return `${score.toFixed(3)} us`;
 	}
 
 	static success(output: string): BenchmarkOutput {
@@ -32,6 +32,18 @@ export class BenchmarkOutput {
 
 	static error(): BenchmarkOutput {
 		return new BenchmarkOutput(undefined);
+	}
+
+	static diffMessage(a: BenchmarkOutput, b: BenchmarkOutput): string {
+		const scoreA = a.getScore();
+		const scoreB = b.getScore();
+		if (scoreA === 0 || scoreB === 0) {
+			return '[ERROR]';
+		}
+
+		const diff = ((scoreA - scoreB) / scoreB) * 100;
+		const sign = diff > 0 ? '+' : '';
+		return `${sign}${diff.toFixed(3)} %`;
 	}
 }
 
@@ -47,11 +59,10 @@ export class ResultMap {
 		return this;
 	}
 
-	get(project: string, branch: string): BenchmarkOutput | undefined {
-		return this.results.get(ResultMap._toKey(project, branch));
-	}
-
-	getMessage(project: string, branch: string): string {
-		return this.get(project, branch)?.getCommentBody() ?? '[ERROR]';
+	get(project: string, branch: string): BenchmarkOutput {
+		return (
+			this.results.get(ResultMap._toKey(project, branch)) ??
+			BenchmarkOutput.error()
+		);
 	}
 }

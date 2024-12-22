@@ -29973,11 +29973,13 @@ function compileResultsIntoCommentBody(context, results) {
     const { headBranch, baseBranch } = context;
     let output = '## Benchmark Results\n\n';
     for (const project of context.projects) {
-        const headResult = results.getMessage(project, headBranch);
-        const baseResult = results.getMessage(project, baseBranch);
-        output += `### *${project}*\n`;
-        output += ` * Current Branch [${headBranch}]: ${headResult}\n`;
-        output += ` * Base Branch [${baseBranch}]: ${baseResult}\n`;
+        const headResult = results.get(project, headBranch);
+        const baseResult = results.get(project, baseBranch);
+        const diff = result_map_1.BenchmarkOutput.diffMessage(headResult, baseResult);
+        output += `### Package *${project}*:\n`;
+        output += ` * Current Branch [${headBranch}]: ${headResult.getMessage()}\n`;
+        output += ` * Base Branch [${baseBranch}]: ${baseResult.getMessage()}\n`;
+        output += ` * Diff: ${diff}\n`;
         output += '\n';
     }
     return output;
@@ -30108,17 +30110,28 @@ class BenchmarkOutput {
             throw new Error(`Failed to parse benchmark output: ${this.output}`);
         }
     }
-    getCommentBody() {
-        if (this.output === undefined) {
-            return undefined;
+    getMessage() {
+        const score = this.getScore();
+        if (score === 0) {
+            return '[ERROR]';
         }
-        return `${this.getScore()} us`;
+        return `${score.toFixed(3)} us`;
     }
     static success(output) {
         return new BenchmarkOutput(output.trim());
     }
     static error() {
         return new BenchmarkOutput(undefined);
+    }
+    static diffMessage(a, b) {
+        const scoreA = a.getScore();
+        const scoreB = b.getScore();
+        if (scoreA === 0 || scoreB === 0) {
+            return '[ERROR]';
+        }
+        const diff = ((scoreA - scoreB) / scoreB) * 100;
+        const sign = diff > 0 ? '+' : '';
+        return `${sign}${diff.toFixed(3)} %`;
     }
 }
 exports.BenchmarkOutput = BenchmarkOutput;
@@ -30132,10 +30145,8 @@ class ResultMap {
         return this;
     }
     get(project, branch) {
-        return this.results.get(ResultMap._toKey(project, branch));
-    }
-    getMessage(project, branch) {
-        return this.get(project, branch)?.getCommentBody() ?? '[ERROR]';
+        return (this.results.get(ResultMap._toKey(project, branch)) ??
+            BenchmarkOutput.error());
     }
 }
 exports.ResultMap = ResultMap;

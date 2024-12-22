@@ -43,12 +43,14 @@ function compileResultsIntoCommentBody(
 	const { headBranch, baseBranch } = context;
 	let output = '## Benchmark Results\n\n';
 	for (const project of context.projects) {
-		const headResult = results.getMessage(project, headBranch);
-		const baseResult = results.getMessage(project, baseBranch);
+		const headResult = results.get(project, headBranch);
+		const baseResult = results.get(project, baseBranch);
+		const diff = BenchmarkOutput.diffMessage(headResult, baseResult);
 
-		output += `### *${project}*\n`;
-		output += ` * Current Branch [${headBranch}]: ${headResult}\n`;
-		output += ` * Base Branch [${baseBranch}]: ${baseResult}\n`;
+		output += `### Package *${project}*:\n`;
+		output += ` * Current Branch [${headBranch}]: ${headResult.getMessage()}\n`;
+		output += ` * Base Branch [${baseBranch}]: ${baseResult.getMessage()}\n`;
+		output += ` * Diff: ${diff}\n`;
 		output += '\n';
 	}
 
