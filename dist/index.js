@@ -30328,7 +30328,7 @@ class BenchmarkResults {
         return results;
     }
     getScore(benchmark) {
-        return this.results[benchmark] ?? 0;
+        return this.results[benchmark];
     }
     benchmarks() {
         return Object.keys(this.results);
@@ -30342,22 +30342,23 @@ class BenchmarkResults {
     static computeDiffs(a, b) {
         const allBenchmarks = [...new Set([...a.benchmarks(), ...b.benchmarks()])];
         core.info(`Compiling diffs for benchmarks: ${allBenchmarks.join(', ')}`);
-        return allBenchmarks
-            .map(benchmark => {
+        return allBenchmarks.map(benchmark => {
             const scoreA = a.getScore(benchmark);
             const scoreB = b.getScore(benchmark);
-            if (scoreA === 0 || scoreB === 0) {
-                return undefined;
+            let diff;
+            if (scoreA === undefined || scoreB === undefined) {
+                diff = undefined;
             }
-            const diff = ((scoreA - scoreB) / scoreB) * 100;
+            else {
+                diff = ((scoreA - scoreB) / scoreB) * 100;
+            }
             return {
                 benchmark,
                 scoreA,
                 scoreB,
                 diff,
             };
-        })
-            .filter(diff => diff !== undefined);
+        });
     }
 }
 exports.BenchmarkResults = BenchmarkResults;

@@ -3,9 +3,9 @@ import { Project } from './action_context';
 
 export type BenchmarkDiff = {
 	benchmark: string;
-	scoreA: number;
-	scoreB: number;
-	diff: number;
+	scoreA: number | undefined;
+	scoreB: number | undefined;
+	diff: number | undefined;
 };
 
 export class BenchmarkResults {
@@ -45,8 +45,8 @@ export class BenchmarkResults {
 		return results;
 	}
 
-	getScore(benchmark: string): number {
-		return this.results[benchmark] ?? 0;
+	getScore(benchmark: string): number | undefined {
+		return this.results[benchmark];
 	}
 
 	benchmarks(): string[] {
@@ -67,23 +67,23 @@ export class BenchmarkResults {
 	): BenchmarkDiff[] {
 		const allBenchmarks = [...new Set([...a.benchmarks(), ...b.benchmarks()])];
 		core.info(`Compiling diffs for benchmarks: ${allBenchmarks.join(', ')}`);
-		return allBenchmarks
-			.map(benchmark => {
-				const scoreA = a.getScore(benchmark);
-				const scoreB = b.getScore(benchmark);
-				if (scoreA === 0 || scoreB === 0) {
-					return undefined;
-				}
+		return allBenchmarks.map(benchmark => {
+			const scoreA = a.getScore(benchmark);
+			const scoreB = b.getScore(benchmark);
 
-				const diff = ((scoreA - scoreB) / scoreB) * 100;
-				return {
-					benchmark,
-					scoreA,
-					scoreB,
-					diff,
-				};
-			})
-			.filter(diff => diff !== undefined);
+			let diff: number | undefined;
+			if (scoreA === undefined || scoreB === undefined) {
+				diff = undefined;
+			} else {
+				diff = ((scoreA - scoreB) / scoreB) * 100;
+			}
+			return {
+				benchmark,
+				scoreA,
+				scoreB,
+				diff,
+			};
+		});
 	}
 }
 
