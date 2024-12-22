@@ -18,7 +18,7 @@ describe('run', () => {
 	beforeEach(() => {
 		jest.resetAllMocks();
 		(core.getInput as jest.Mock).mockImplementation(
-			() => 'repo1/benchmarks,repo2/benchmarks',
+			() => 'packages/p1,packages/p2',
 		);
 
 		github.context.payload = {
@@ -33,11 +33,12 @@ describe('run', () => {
 	});
 
 	it('should fetch inputs and execute benchmarks on both branches', async () => {
-		const mockExec = exec.exec as jest.Mock;
-
-		mockExec
-			.mockResolvedValueOnce('Benchmark results for feature branch')
-			.mockResolvedValueOnce('Benchmark results for main branch');
+		const mockExec = mockCommandOutputs({
+			'main/p1': 'Template(RunTime): 100.123 us.',
+			'main/p2': 'Template(RunTime): 200.456 us.',
+			'feature-branch/p1': 'Template(RunTime): 100.456 us.',
+			'feature-branch/p2': 'Template(RunTime): 200.123 us.',
+		});
 
 		const mockComments = jest.fn().mockResolvedValueOnce({ data: [] });
 		const mockCreateComment = jest.fn();
@@ -57,12 +58,12 @@ describe('run', () => {
 
 		expect(mockExec).toHaveBeenCalledWith(
 			'dart',
-			['run', 'repo1/benchmarks/benchmark/main.dart'],
+			['run', 'packages/p1/benchmark/main.dart'],
 			expect.anything(),
 		);
 		expect(mockExec).toHaveBeenCalledWith(
 			'dart',
-			['run', 'repo2/benchmarks/benchmark/main.dart'],
+			['run', 'packages/p2/benchmark/main.dart'],
 			expect.anything(),
 		);
 
@@ -76,12 +77,29 @@ describe('run', () => {
 			owner: 'owner',
 			repo: 'repo',
 			issue_number: 123,
-			body: expect.stringContaining('### Benchmark Results') as string,
+			body: [
+				'## Benchmark Results',
+				'',
+				'### *packages/p1*',
+				' * Current Branch [feature-branch]: 100.456 us',
+				' * Base Branch [main]: 100.123 us',
+				'',
+				'### *packages/p2*',
+				' * Current Branch [feature-branch]: 200.123 us',
+				' * Base Branch [main]: 200.456 us',
+				'',
+				'',
+			].join('\n'),
 		});
 	});
 
 	it('should update an existing comment if present', async () => {
-		const mockExec = exec.exec as jest.Mock;
+		const mockExec = mockCommandOutputs({
+			'main/p1': 'Template(RunTime): 100.123 us.',
+			'main/p2': 'Template(RunTime): 200.456 us.',
+			'feature-branch/p1': 'Template(RunTime): 100.456 us.',
+			'feature-branch/p2': 'Template(RunTime): 200.123 us.',
+		});
 
 		const existingComment = {
 			id: 1,
@@ -101,17 +119,36 @@ describe('run', () => {
 			},
 		});
 
-		mockExec
-			.mockResolvedValueOnce('Updated feature branch results')
-			.mockResolvedValueOnce('Updated main branch results');
-
 		await run();
+
+		expect(mockExec).toHaveBeenCalledWith(
+			'dart',
+			['run', 'packages/p1/benchmark/main.dart'],
+			expect.anything(),
+		);
+		expect(mockExec).toHaveBeenCalledWith(
+			'dart',
+			['run', 'packages/p2/benchmark/main.dart'],
+			expect.anything(),
+		);
 
 		expect(mockUpdateComment).toHaveBeenCalledWith({
 			owner: 'owner',
 			repo: 'repo',
 			comment_id: 1,
-			body: expect.stringContaining('### Benchmark Results') as string,
+			body: [
+				'## Benchmark Results',
+				'',
+				'### *packages/p1*',
+				' * Current Branch [feature-branch]: 100.456 us',
+				' * Base Branch [main]: 100.123 us',
+				'',
+				'### *packages/p2*',
+				' * Current Branch [feature-branch]: 200.123 us',
+				' * Base Branch [main]: 200.456 us',
+				'',
+				'',
+			].join('\n'),
 		});
 	});
 
@@ -132,7 +169,38 @@ describe('run', () => {
 		await expect(run()).resolves.not.toThrow();
 
 		expect(core.error).toHaveBeenCalledWith(
-			'Failed to run benchmark on current branch for repo1/benchmarks: Execution failed',
+			'+ Failed to run benchmark for packages/p1 on branch feature-branch: Execution failed',
 		);
+		expect(core.error).toHaveBeenCalledWith(
+			'+ Failed to run benchmark for packages/p2 on branch feature-branch: Execution failed',
+		);
+		expect(core.setFailed).toHaveBeenCalled();
 	});
+
+	function mockCommandOutputs(results: Record<string, string>): jest.Mock {
+		const mockExec = exec.exec as jest.Mock;
+
+		let isMain = false;
+		mockExec.mockImplementation(
+			async (
+				command,
+				args: string[],
+				options: {
+					listeners?: { stdout: (data: string) => void };
+				},
+			) => {
+				if (command === 'git') {
+					isMain = true;
+				} else {
+					const project = args[1].includes('p1') ? 'p1' : 'p2';
+					const branch = isMain ? 'main' : 'feature-branch';
+					const key = `${branch}/${project}`;
+					options?.listeners?.stdout?.(results[key]);
+				}
+				return Promise.resolve();
+			},
+		);
+
+		return mockExec;
+	}
 });
