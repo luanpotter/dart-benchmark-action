@@ -30,19 +30,19 @@ export class BenchmarkResults {
 			.split('\n')
 			.map(line => line.trim());
 
-		const result: Record<string, number> = {};
+		const results: Record<string, number> = {};
 		for (const entry of entries) {
 			try {
 				const [p1, p2] = entry.split(': ');
 				const name = p1.replace(/\(RunTime\)$/, '');
 				const value = parseFloat(p2);
 				core.info(`Parsed benchmark: ${name} -> ${value}`);
-				result[name] = value;
+				results[name] = value;
 			} catch {
 				core.error(`Failed to parse benchmark output: \`${output}\``);
 			}
 		}
-		return result;
+		return results;
 	}
 
 	getScore(benchmark: string): number {
@@ -65,8 +65,9 @@ export class BenchmarkResults {
 		a: BenchmarkResults,
 		b: BenchmarkResults,
 	): BenchmarkDiff[] {
-		const allBenchmarks = new Set([...a.benchmarks(), ...b.benchmarks()]);
-		return [...allBenchmarks]
+		const allBenchmarks = [...new Set([...a.benchmarks(), ...b.benchmarks()])];
+		core.info(`Compiling diffs for benchmarks: ${allBenchmarks.join(', ')}`);
+		return allBenchmarks
 			.map(benchmark => {
 				const scoreA = a.getScore(benchmark);
 				const scoreB = b.getScore(benchmark);
