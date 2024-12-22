@@ -30056,7 +30056,7 @@ async function executeCommand(command, args) {
     let output = '';
     let error = '';
     core.info(` + Running command: ${command} ${args.join(' ')}`);
-    await (0, exec_1.exec)(command, args, {
+    const resultCode = await (0, exec_1.exec)(command, args, {
         listeners: {
             stdout: (data) => {
                 output += data.toString();
@@ -30066,8 +30066,8 @@ async function executeCommand(command, args) {
             },
         },
     });
-    if (error) {
-        throw new Error(`Command ${[command, ...args].join(' ')} error: ${error}`);
+    if (resultCode !== 0) {
+        throw new Error(`Command ${[command, ...args].join(' ')} failed with ${resultCode}: ${error}`);
     }
     return output;
 }

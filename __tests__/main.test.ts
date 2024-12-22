@@ -197,7 +197,7 @@ describe('run', () => {
 					const key = `${branch}/${project}`;
 					options?.listeners?.stdout?.(results[key]);
 				}
-				return Promise.resolve();
+				return Promise.resolve(0);
 			},
 		);
 

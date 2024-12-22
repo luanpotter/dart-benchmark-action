@@ -156,7 +156,7 @@ async function executeCommand(
 	let error = '';
 
 	core.info(` + Running command: ${command} ${args.join(' ')}`);
-	await exec(command, args, {
+	const resultCode = await exec(command, args, {
 		listeners: {
 			stdout: (data: Buffer) => {
 				output += data.toString();
@@ -167,8 +167,10 @@ async function executeCommand(
 		},
 	});
 
-	if (error) {
-		throw new Error(`Command ${[command, ...args].join(' ')} error: ${error}`);
+	if (resultCode !== 0) {
+		throw new Error(
+			`Command ${[command, ...args].join(' ')} failed with ${resultCode}: ${error}`,
+		);
 	}
 
 	return output;
