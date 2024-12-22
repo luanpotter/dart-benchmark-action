@@ -2,12 +2,12 @@ import * as core from '@actions/core';
 import * as github from '@actions/github';
 import { exec } from '@actions/exec';
 import { BenchmarkOutput, ResultMap } from './result_map';
-import { ActionContext } from './action_context';
+import { ActionContext, Project } from './action_context';
 
 export async function run(): Promise<void> {
 	try {
 		core.info('Collecting information to run benchmarks:');
-		const context = buildContext();
+		const context = await buildContext();
 
 		core.info('Create result map:');
 		const results = new ResultMap();
@@ -47,7 +47,7 @@ function compileResultsIntoCommentBody(
 		const baseResult = results.get(project, baseBranch);
 		const diff = BenchmarkOutput.diffMessage(headResult, baseResult);
 
-		output += `### Package *${project}*:\n`;
+		output += `### Package *${project.identifier()}*:\n`;
 		output += ` * Current Branch [${headBranch}]: ${headResult.getMessage()}\n`;
 		output += ` * Base Branch [${baseBranch}]: ${baseResult.getMessage()}\n`;
 		output += ` * Diff: ${diff}\n`;
@@ -88,31 +88,29 @@ async function createOrUpdateComment(
 
 async function runBenchmark(
 	results: ResultMap,
-	project: string,
+	project: Project,
 	branch: string,
 ): Promise<void> {
-	core.info(`+ Running benchmarks for ${project} on branch ${branch}:`);
+	const { path } = project;
+	core.info(`+ Running benchmarks for ${path} on branch ${branch}:`);
 
 	let result: BenchmarkOutput;
 	try {
 		const output = await executeCommand('dart', [
 			'run',
-			`${project}/benchmark/main.dart`,
+			`${path}/benchmark/main.dart`,
 		]);
 		result = BenchmarkOutput.success(output);
 	} catch (error) {
-		logError(
-			error,
-			`Failed to run benchmark for ${project} on branch ${branch}`,
-		);
+		logError(error, `Failed to run benchmark for ${path} on branch ${branch}`);
 		result = BenchmarkOutput.error();
 	}
 
 	results.set(project, branch, result);
 }
 
-function buildContext(): ActionContext {
-	const projects = core
+async function buildContext(): Promise<ActionContext> {
+	const projectPaths = core
 		.getInput('paths', { required: true })
 		.split(',')
 		.map(path => path.trim());
@@ -137,6 +135,12 @@ function buildContext(): ActionContext {
 	// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
 	const baseBranch: string = pullRequest.base.ref as string;
 
+	const projects = await Promise.all(
+		projectPaths.map(
+			async path => new Project(path, await extractProjectName(path)),
+		),
+	);
+
 	return {
 		githubToken,
 		repository: {
@@ -148,6 +152,19 @@ function buildContext(): ActionContext {
 		headBranch,
 		baseBranch,
 	};
+}
+
+async function extractProjectName(path: string): Promise<string | undefined> {
+	try {
+		const output = await executeCommand(`/bin/bash -c "`, [
+			'-c',
+			`(cd ${path} ; cat pubspec.yaml | grep "^name:"| perl -pe 's/^name: (.*)$/$1/')`,
+		]);
+		return output.trim();
+	} catch (error) {
+		logError(error, `Failed to extract project name for ${path}`);
+		return undefined;
+	}
 }
 
 async function executeCommand(

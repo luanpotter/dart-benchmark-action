@@ -80,6 +80,74 @@ describe('run', () => {
 			body: [
 				'## Benchmark Results',
 				'',
+				'### Package *p1*:',
+				' * Current Branch [feature-branch]: 100.456 us',
+				' * Base Branch [main]: 100.123 us',
+				' * Diff: +0.333 %',
+				'',
+				'### Package *p2*:',
+				' * Current Branch [feature-branch]: 200.123 us',
+				' * Base Branch [main]: 200.456 us',
+				' * Diff: -0.166 %',
+				'',
+				'',
+			].join('\n'),
+		});
+	});
+
+	it('should handle package name resolution failure gracefully', async () => {
+		const mockExec = mockCommandOutputs(
+			{
+				'main/p1': 'Template(RunTime): 100.123 us.',
+				'main/p2': 'Template(RunTime): 200.456 us.',
+				'feature-branch/p1': 'Template(RunTime): 100.456 us.',
+				'feature-branch/p2': 'Template(RunTime): 200.123 us.',
+			},
+			{
+				failPackageNameResolution: true,
+			},
+		);
+
+		const mockComments = jest.fn().mockResolvedValueOnce({ data: [] });
+		const mockCreateComment = jest.fn();
+		const mockUpdateComment = jest.fn();
+
+		(github.getOctokit as jest.Mock).mockReturnValue({
+			rest: {
+				issues: {
+					listComments: mockComments,
+					createComment: mockCreateComment,
+					updateComment: mockUpdateComment,
+				},
+			},
+		});
+
+		await run();
+
+		expect(mockExec).toHaveBeenCalledWith(
+			'dart',
+			['run', 'packages/p1/benchmark/main.dart'],
+			expect.anything(),
+		);
+		expect(mockExec).toHaveBeenCalledWith(
+			'dart',
+			['run', 'packages/p2/benchmark/main.dart'],
+			expect.anything(),
+		);
+
+		expect(mockComments).toHaveBeenCalledWith({
+			owner: 'owner',
+			repo: 'repo',
+			issue_number: 123,
+		});
+
+		expect(mockCreateComment).toHaveBeenCalledWith({
+			owner: 'owner',
+			repo: 'repo',
+			issue_number: 123,
+			body: [
+				'## Benchmark Results',
+				'',
 				'### Package *packages/p1*:',
 				' * Current Branch [feature-branch]: 100.456 us',
 				' * Base Branch [main]: 100.123 us',
@@ -141,12 +209,12 @@ describe('run', () => {
 			body: [
 				'## Benchmark Results',
 				'',
-				'### Package *packages/p1*:',
+				'### Package *p1*:',
 				' * Current Branch [feature-branch]: 100.456 us',
 				' * Base Branch [main]: 100.123 us',
 				' * Diff: +0.333 %',
 				'',
-				'### Package *packages/p2*:',
+				'### Package *p2*:',
 				' * Current Branch [feature-branch]: 200.123 us',
 				' * Base Branch [main]: 200.456 us',
 				' * Diff: -0.166 %',
@@ -181,8 +249,16 @@ describe('run', () => {
 		expect(core.setFailed).toHaveBeenCalled();
 	});
 
-	function mockCommandOutputs(results: Record<string, string>): jest.Mock {
+	function mockCommandOutputs(
+		results: Record<string, string>,
+		options: {
+			failPackageNameResolution: boolean;
+		} = {
+			failPackageNameResolution: false,
+		},
+	): jest.Mock {
 		const mockExec = exec.exec as jest.Mock;
+		const { failPackageNameResolution } = options;
 
 		let isMain = false;
 		mockExec.mockImplementation(
@@ -195,11 +271,17 @@ describe('run', () => {
 			) => {
 				if (command === 'git') {
 					isMain = true;
-				} else {
+				} else if (command == 'dart') {
 					const project = args[1].includes('p1') ? 'p1' : 'p2';
 					const branch = isMain ? 'main' : 'feature-branch';
 					const key = `${branch}/${project}`;
 					options?.listeners?.stdout?.(results[key]);
+				} else {
+					// package name command
+					if (failPackageNameResolution) {
+						return Promise.resolve(1);
+					}
+					options?.listeners?.stdout?.(args[1].includes('p1') ? 'p1' : 'p2');
 				}
 				return Promise.resolve(0);
 			},

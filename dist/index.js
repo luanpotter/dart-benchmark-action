@@ -29898,6 +29898,31 @@ function wrappy (fn, cb) {
 
 /***/ }),
 
+/***/ 2725:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.Project = void 0;
+class Project {
+    path;
+    // Script might fail to find the project name; in which case the path
+    // will be used as display name.
+    name;
+    constructor(path, name) {
+        this.path = path;
+        this.name = name;
+    }
+    identifier() {
+        return this.name ?? this.path;
+    }
+}
+exports.Project = Project;
+
+
+/***/ }),
+
 /***/ 1730:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -29942,10 +29967,11 @@ const core = __importStar(__nccwpck_require__(7484));
 const github = __importStar(__nccwpck_require__(3228));
 const exec_1 = __nccwpck_require__(5236);
 const result_map_1 = __nccwpck_require__(5291);
+const action_context_1 = __nccwpck_require__(2725);
 async function run() {
     try {
         core.info('Collecting information to run benchmarks:');
-        const context = buildContext();
+        const context = await buildContext();
         core.info('Create result map:');
         const results = new result_map_1.ResultMap();
         core.info(`Running benchmarks for ${context.headBranch}:`);
@@ -29976,7 +30002,7 @@ function compileResultsIntoCommentBody(context, results) {
         const headResult = results.get(project, headBranch);
         const baseResult = results.get(project, baseBranch);
         const diff = result_map_1.BenchmarkOutput.diffMessage(headResult, baseResult);
-        output += `### Package *${project}*:\n`;
+        output += `### Package *${project.identifier()}*:\n`;
         output += ` * Current Branch [${headBranch}]: ${headResult.getMessage()}\n`;
         output += ` * Base Branch [${baseBranch}]: ${baseResult.getMessage()}\n`;
         output += ` * Diff: ${diff}\n`;
@@ -30007,23 +30033,24 @@ async function createOrUpdateComment(context, commentBody) {
     }
 }
 async function runBenchmark(results, project, branch) {
-    core.info(`+ Running benchmarks for ${project} on branch ${branch}:`);
+    const { path } = project;
+    core.info(`+ Running benchmarks for ${path} on branch ${branch}:`);
     let result;
     try {
         const output = await executeCommand('dart', [
             'run',
-            `${project}/benchmark/main.dart`,
+            `${path}/benchmark/main.dart`,
         ]);
         result = result_map_1.BenchmarkOutput.success(output);
     }
     catch (error) {
-        logError(error, `Failed to run benchmark for ${project} on branch ${branch}`);
+        logError(error, `Failed to run benchmark for ${path} on branch ${branch}`);
         result = result_map_1.BenchmarkOutput.error();
     }
     results.set(project, branch, result);
 }
-function buildContext() {
-    const projects = core
+async function buildContext() {
+    const projectPaths = core
         .getInput('paths', { required: true })
         .split(',')
         .map(path => path.trim());
@@ -30042,6 +30069,7 @@ function buildContext() {
     const headBranch = pullRequest.head.ref;
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const baseBranch = pullRequest.base.ref;
+    const projects = await Promise.all(projectPaths.map(async (path) => new action_context_1.Project(path, await extractProjectName(path))));
     return {
         githubToken,
         repository: {
@@ -30053,6 +30081,19 @@ function buildContext() {
         headBranch,
         baseBranch,
     };
+}
+async function extractProjectName(path) {
+    try {
+        const output = await executeCommand(`/bin/bash -c "`, [
+            '-c',
+            `(cd ${path} ; cat pubspec.yaml | grep "^name:"| perl -pe 's/^name: (.*)$/$1/')`,
+        ]);
+        return output.trim();
+    }
+    catch (error) {
+        logError(error, `Failed to extract project name for ${path}`);
+        return undefined;
+    }
 }
 async function executeCommand(command, args) {
     let output = '';
@@ -30138,7 +30179,7 @@ exports.BenchmarkOutput = BenchmarkOutput;
 class ResultMap {
     results = new Map();
     static _toKey(project, branch) {
-        return `${project}/${branch}`;
+        return `${project.identifier()}/${branch}`;
     }
     set(project, branch, value) {
         this.results.set(ResultMap._toKey(project, branch), value);

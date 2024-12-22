@@ -1,3 +1,5 @@
+import { Project } from './action_context';
+
 export class BenchmarkOutput {
 	private output: string | undefined;
 
@@ -50,16 +52,16 @@ export class BenchmarkOutput {
 export class ResultMap {
 	private results = new Map<string, BenchmarkOutput>();
 
-	private static _toKey(project: string, branch: string): string {
-		return `${project}/${branch}`;
+	private static _toKey(project: Project, branch: string): string {
+		return `${project.identifier()}/${branch}`;
 	}
 
-	set(project: string, branch: string, value: BenchmarkOutput): this {
+	set(project: Project, branch: string, value: BenchmarkOutput): this {
 		this.results.set(ResultMap._toKey(project, branch), value);
 		return this;
 	}
 
-	get(project: string, branch: string): BenchmarkOutput {
+	get(project: Project, branch: string): BenchmarkOutput {
 		return (
 			this.results.get(ResultMap._toKey(project, branch)) ??
 			BenchmarkOutput.error()
