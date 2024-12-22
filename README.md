@@ -10,16 +10,22 @@ In order to use it, add it as an Action to your GitHub repository:
 ```yaml
 name: Benchmark
 
-on: [push, pull_request]
+on: [pull_request]
 
 jobs:
   benchmark:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: luanpotter/dart-benchmark-action@v1
-        with:
-          paths: '<path-to-your-dart-project>,<more>'
+    - uses: actions/checkout@v3
+
+    - uses: dart-lang/setup-dart@v1
+    - run: dart pub get
+
+    - uses: luanpotter/dart-benchmark-action@v0.1.4
+      with:
+        paths: '<path-to-your-dart-project>,<more>'
+      env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ## Local Setup
