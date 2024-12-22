@@ -28,6 +28,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
+This is what the comment can look like:
+
+![image](https://github.com/user-attachments/assets/ab25e1d4-baaa-445e-9f51-ec82deb7d9a6)
+
+But it will use tables and toggles depending on the amount of projects/packages
+you have and the number of performance tests associated with them.
+
 ## Local Setup
 
 To build, lint, and run tests locally, run:
