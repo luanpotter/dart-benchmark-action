@@ -16,15 +16,15 @@ jobs:
   benchmark:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-    - uses: dart-lang/setup-dart@v1
-    - run: dart pub get
+      - uses: dart-lang/setup-dart@v1
+      - run: dart pub get
 
-    - uses: luanpotter/dart-benchmark-action@v0.1.4
-      with:
-        paths: '<path-to-your-dart-project>,<more>'
-      env:
+      - uses: luanpotter/dart-benchmark-action@v0.1.4
+        with:
+          paths: '<path-to-your-dart-project>,<more>'
+        env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
