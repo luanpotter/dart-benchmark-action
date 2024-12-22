@@ -29923,6 +29923,140 @@ exports.Project = Project;
 
 /***/ }),
 
+/***/ 3199:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.CommentFormatter = void 0;
+class CommentFormatter {
+    projects;
+    currentBranch;
+    baseBranch;
+    results;
+    output = [];
+    constructor(projects, currentBranch, baseBranch, results) {
+        this.projects = projects;
+        this.currentBranch = currentBranch;
+        this.baseBranch = baseBranch;
+        this.results = results;
+    }
+    format() {
+        this.output = [];
+        this.renderLines();
+        return this.output.join('\n');
+    }
+    renderLines() {
+        this.output.push('## Benchmark Results');
+        this.output.push('');
+        if (this.projects.length === 0) {
+            this.output.push('> [!WARNING]', '> No projects to benchmark.');
+        }
+        else if (this.projects.length === 1) {
+            this.renderSingleProject(this.projects[0]);
+        }
+        else {
+            for (const project of this.projects) {
+                this.renderProject(project);
+                this.output.push('');
+            }
+        }
+    }
+    renderSingleProject(project) {
+        const diffs = this.computeDiffs(project);
+        if (diffs.length === 0) {
+            this.renderNoDiffsWarning(project);
+            return;
+        }
+        this.output.push(`### Package *${project.identifier()}*:\n`);
+        if (diffs.length === 1) {
+            const diff = diffs[0];
+            this.renderSingleDiff(diff);
+        }
+        else {
+            this.renderTableDiff(diffs);
+        }
+        this.output.push('');
+    }
+    renderProject(project) {
+        const diffs = this.computeDiffs(project);
+        if (diffs.length === 0) {
+            this.renderNoDiffsWarning(project);
+            return;
+        }
+        const average = diffs.reduce((acc, diff) => acc + (diff?.diff ?? 0), 0) / diffs.length;
+        this.output.push(`<details>`, `<summary><h3>Package <b>${project.identifier()}</b>: ${this.formatPercentage(average)}</h3></summary>`);
+        if (diffs.length === 1) {
+            const diff = diffs[0];
+            this.renderSingleDiff(diff);
+        }
+        else {
+            this.renderTableDiff(diffs);
+        }
+        this.output.push(`</details>`);
+    }
+    renderNoDiffsWarning(project) {
+        this.output.push('> [!WARNING]', `No benchmark results found for package ${project.identifier()}.`);
+    }
+    renderSingleDiff(diff) {
+        /**
+         * * Current Branch [luan.try-out-new-benchmark]: 246.015 us
+         * * Base Branch [main]: 250.330 us
+         * * Diff: -1.724 %
+         */
+        this.output.push(` * Current Branch [${this.currentBranch}]: ${this.formatScore(diff.scoreA)}`, ` * Base Branch [${this.baseBranch}]: ${this.formatScore(diff.scoreB)}`, ` * Diff: ${this.formatPercentage(diff.diff)}`);
+    }
+    renderTableDiff(diffs) {
+        /**
+         * | Benchmark  | Current Branch<br />[luan.try-out-new-benchmark] | Base Branch<br />[main] | Diff |
+         * | ------------- | -------- | -------- | -------- |
+         * | Bench1  | 246.015 us  | 250.330 us | - 1.724% |
+         * | Bench2  | 246.015 us  | 250.330 us | - 1.724% |
+         */
+        this.output.push(this.tabulate([
+            'Benchmarks',
+            `Current Branch<br/>[${this.currentBranch}]`,
+            `Base Branch<br/>[${this.baseBranch}]`,
+            'Diff',
+        ]), this.tabulate(['-------------', '--------', '--------', '--------']));
+        for (const diff of diffs) {
+            this.output.push(this.tabulate([
+                diff.benchmark,
+                this.formatScore(diff.scoreA),
+                this.formatScore(diff.scoreB),
+                this.formatPercentage(diff.diff),
+            ]));
+        }
+    }
+    computeDiffs(project) {
+        return this.results.computeDiffs(project, this.currentBranch, this.baseBranch);
+    }
+    tabulate(cols) {
+        return `| ${cols.join(' | ')} |`;
+    }
+    formatScore(score) {
+        if (score === undefined) {
+            return '[ERROR]';
+        }
+        return `${score.toFixed(3)} μs`;
+    }
+    formatPercentage(diff) {
+        if (diff === undefined) {
+            return '[ERROR]';
+        }
+        // use emoji arrows for up and down 🟢 🔴
+        const emojiArrow = diff > 0 ? '🔴 ' : diff < 0 ? '🔴 ' : '  ';
+        const diffSign = diff > 0 ? '+' : diff < 0 ? '-' : ' ';
+        const diffValue = Math.abs(diff).toFixed(3);
+        return `${emojiArrow}${diffSign}${diffValue} %`;
+    }
+}
+exports.CommentFormatter = CommentFormatter;
+
+
+/***/ }),
+
 /***/ 1730:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -29968,15 +30102,16 @@ const github = __importStar(__nccwpck_require__(3228));
 const exec_1 = __nccwpck_require__(5236);
 const result_map_1 = __nccwpck_require__(5291);
 const action_context_1 = __nccwpck_require__(2725);
+const comment_formatter_1 = __nccwpck_require__(3199);
 async function run() {
     try {
         core.info('Collecting information to run benchmarks:');
         const context = await buildContext();
         core.info('Create result map:');
         const results = new result_map_1.ResultMap();
-        core.info(`Running benchmarks for ${context.headBranch}:`);
+        core.info(`Running benchmarks for ${context.currentBranch}:`);
         for (const project of context.projects) {
-            await runBenchmark(results, project, context.headBranch);
+            await runBenchmark(results, project, context.currentBranch);
         }
         core.info('Fetching main branch...');
         await executeCommand('git', ['fetch', 'origin', context.baseBranch]);
@@ -29986,29 +30121,14 @@ async function run() {
             await runBenchmark(results, project, context.baseBranch);
         }
         core.info(`Compiling results into comment body:`);
-        const commentBody = compileResultsIntoCommentBody(context, results);
+        const commentFormatter = new comment_formatter_1.CommentFormatter(context.projects, context.currentBranch, context.baseBranch, results);
         core.info(`Creating or updating comment on GitHub:`);
-        await createOrUpdateComment(context, commentBody);
+        await createOrUpdateComment(context, commentFormatter.format());
     }
     catch (error) {
         if (error instanceof Error)
             core.setFailed(error.message);
     }
-}
-function compileResultsIntoCommentBody(context, results) {
-    const { headBranch, baseBranch } = context;
-    let output = '## Benchmark Results\n\n';
-    for (const project of context.projects) {
-        const headResult = results.get(project, headBranch);
-        const baseResult = results.get(project, baseBranch);
-        const diff = result_map_1.BenchmarkOutput.diffMessage(headResult, baseResult);
-        output += `### Package *${project.identifier()}*:\n`;
-        output += ` * Current Branch [${headBranch}]: ${headResult.getMessage()}\n`;
-        output += ` * Base Branch [${baseBranch}]: ${baseResult.getMessage()}\n`;
-        output += ` * Diff: ${diff}\n`;
-        output += '\n';
-    }
-    return output;
 }
 async function createOrUpdateComment(context, commentBody) {
     const octokit = github.getOctokit(context.githubToken);
@@ -30041,11 +30161,11 @@ async function runBenchmark(results, project, branch) {
             'run',
             `${path}/benchmark/main.dart`,
         ]);
-        result = result_map_1.BenchmarkOutput.success(output);
+        result = result_map_1.BenchmarkResults.success(output);
     }
     catch (error) {
         logError(error, `Failed to run benchmark for ${path} on branch ${branch}`);
-        result = result_map_1.BenchmarkOutput.error();
+        result = result_map_1.BenchmarkResults.error();
     }
     results.set(project, branch, result);
 }
@@ -30066,7 +30186,7 @@ async function buildContext() {
     const prNumber = pullRequest.number;
     // we need unsafe member access because typescript...
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const headBranch = pullRequest.head.ref;
+    const currentBranch = pullRequest.head.ref;
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const baseBranch = pullRequest.base.ref;
     const projects = await Promise.all(projectPaths.map(async (path) => new action_context_1.Project(path, await extractProjectName(path))));
@@ -30078,7 +30198,7 @@ async function buildContext() {
         },
         prNumber,
         projects,
-        headBranch,
+        currentBranch,
         baseBranch,
     };
 }
@@ -30133,49 +30253,70 @@ function logError(error, message) {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.ResultMap = exports.BenchmarkOutput = void 0;
-class BenchmarkOutput {
-    output;
+exports.ResultMap = exports.BenchmarkResults = void 0;
+class BenchmarkResults {
+    // In the format: benchmark name to microseconds
+    // (the benchmark_harness package always outputs in "us" (μs)
+    results;
     constructor(output) {
-        this.output = output;
-    }
-    getScore() {
-        if (this.output === undefined) {
-            return 0;
+        if (output === undefined) {
+            this.results = {};
         }
-        // output in the format: Template(RunTime): 252.7379020979021 us.
+        else {
+            this.results = BenchmarkResults.parseOutput(output);
+        }
+    }
+    // The output will be in the format:
+    // Iteration Benchmark(RunTime): 155.3733089882978 us.
+    // Other Benchmark(RunTime): 22.426620587035305 us.
+    static parseOutput(output) {
         try {
-            return parseFloat(this.output.split(' ')[1]);
+            return Object.fromEntries(output
+                .trim()
+                .split('\n')
+                .map(line => line.trim())
+                .map(line => {
+                const [key, value] = line.split(': ');
+                return [key.replace(/\(RunTime\)$/, ''), parseFloat(value)];
+            }));
         }
         catch {
-            throw new Error(`Failed to parse benchmark output: ${this.output}`);
+            throw new Error(`Failed to parse benchmark output: ${output}`);
         }
     }
-    getMessage() {
-        const score = this.getScore();
-        if (score === 0) {
-            return '[ERROR]';
-        }
-        return `${score.toFixed(3)} us`;
+    getScore(benchmark) {
+        return this.results[benchmark] ?? 0;
+    }
+    benchmarks() {
+        return Object.keys(this.results);
     }
     static success(output) {
-        return new BenchmarkOutput(output.trim());
+        return new BenchmarkResults(output.trim());
     }
     static error() {
-        return new BenchmarkOutput(undefined);
+        return new BenchmarkResults(undefined);
     }
-    static diffMessage(a, b) {
-        const scoreA = a.getScore();
-        const scoreB = b.getScore();
-        if (scoreA === 0 || scoreB === 0) {
-            return '[ERROR]';
-        }
-        const diff = ((scoreA - scoreB) / scoreB) * 100;
-        const sign = diff > 0 ? '+' : '';
-        return `${sign}${diff.toFixed(3)} %`;
+    static computeDiffs(a, b) {
+        const allBenchmarks = new Set([...a.benchmarks(), ...b.benchmarks()]);
+        return [...allBenchmarks]
+            .map(benchmark => {
+            const scoreA = a.getScore(benchmark);
+            const scoreB = b.getScore(benchmark);
+            if (scoreA === 0 || scoreB === 0) {
+                return undefined;
+            }
+            const diff = ((scoreA - scoreB) / scoreB) * 100;
+            return {
+                benchmark,
+                scoreA,
+                scoreB,
+                diff,
+            };
+        })
+            .filter(diff => diff !== undefined);
     }
 }
-exports.BenchmarkOutput = BenchmarkOutput;
+exports.BenchmarkResults = BenchmarkResults;
 class ResultMap {
     results = new Map();
     static _toKey(project, branch) {
@@ -30187,7 +30328,12 @@ class ResultMap {
     }
     get(project, branch) {
         return (this.results.get(ResultMap._toKey(project, branch)) ??
-            BenchmarkOutput.error());
+            BenchmarkResults.error());
+    }
+    computeDiffs(project, branchA, branchB) {
+        const a = this.get(project, branchA);
+        const b = this.get(project, branchB);
+        return BenchmarkResults.computeDiffs(a, b);
     }
 }
 exports.ResultMap = ResultMap;

@@ -1,8 +1,9 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
 import { exec } from '@actions/exec';
-import { BenchmarkOutput, ResultMap } from './result_map';
+import { BenchmarkResults, ResultMap } from './result_map';
 import { ActionContext, Project } from './action_context';
+import { CommentFormatter } from './comment_formatter';
 
 export async function run(): Promise<void> {
 	try {
@@ -12,9 +13,9 @@ export async function run(): Promise<void> {
 		core.info('Create result map:');
 		const results = new ResultMap();
 
-		core.info(`Running benchmarks for ${context.headBranch}:`);
+		core.info(`Running benchmarks for ${context.currentBranch}:`);
 		for (const project of context.projects) {
-			await runBenchmark(results, project, context.headBranch);
+			await runBenchmark(results, project, context.currentBranch);
 		}
 
 		core.info('Fetching main branch...');
@@ -27,34 +28,18 @@ export async function run(): Promise<void> {
 		}
 
 		core.info(`Compiling results into comment body:`);
-		const commentBody = compileResultsIntoCommentBody(context, results);
+		const commentFormatter = new CommentFormatter(
+			context.projects,
+			context.currentBranch,
+			context.baseBranch,
+			results,
+		);
 
 		core.info(`Creating or updating comment on GitHub:`);
-		await createOrUpdateComment(context, commentBody);
+		await createOrUpdateComment(context, commentFormatter.format());
 	} catch (error) {
 		if (error instanceof Error) core.setFailed(error.message);
 	}
-}
-
-function compileResultsIntoCommentBody(
-	context: ActionContext,
-	results: ResultMap,
-): string {
-	const { headBranch, baseBranch } = context;
-	let output = '## Benchmark Results\n\n';
-	for (const project of context.projects) {
-		const headResult = results.get(project, headBranch);
-		const baseResult = results.get(project, baseBranch);
-		const diff = BenchmarkOutput.diffMessage(headResult, baseResult);
-
-		output += `### Package *${project.identifier()}*:\n`;
-		output += ` * Current Branch [${headBranch}]: ${headResult.getMessage()}\n`;
-		output += ` * Base Branch [${baseBranch}]: ${baseResult.getMessage()}\n`;
-		output += ` * Diff: ${diff}\n`;
-		output += '\n';
-	}
-
-	return output;
 }
 
 async function createOrUpdateComment(
@@ -94,16 +79,16 @@ async function runBenchmark(
 	const { path } = project;
 	core.info(`+ Running benchmarks for ${path} on branch ${branch}:`);
 
-	let result: BenchmarkOutput;
+	let result: BenchmarkResults;
 	try {
 		const output = await executeCommand('dart', [
 			'run',
 			`${path}/benchmark/main.dart`,
 		]);
-		result = BenchmarkOutput.success(output);
+		result = BenchmarkResults.success(output);
 	} catch (error) {
 		logError(error, `Failed to run benchmark for ${path} on branch ${branch}`);
-		result = BenchmarkOutput.error();
+		result = BenchmarkResults.error();
 	}
 
 	results.set(project, branch, result);
@@ -131,7 +116,7 @@ async function buildContext(): Promise<ActionContext> {
 	const prNumber: number = pullRequest.number;
 	// we need unsafe member access because typescript...
 	// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-	const headBranch: string = pullRequest.head.ref as string;
+	const currentBranch: string = pullRequest.head.ref as string;
 	// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
 	const baseBranch: string = pullRequest.base.ref as string;
 
@@ -149,7 +134,7 @@ async function buildContext(): Promise<ActionContext> {
 		},
 		prNumber,
 		projects,
-		headBranch,
+		currentBranch,
 		baseBranch,
 	};
 }

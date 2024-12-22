@@ -1,70 +1,112 @@
 import { Project } from './action_context';
 
-export class BenchmarkOutput {
-	private output: string | undefined;
+export type BenchmarkDiff = {
+	benchmark: string;
+	scoreA: number;
+	scoreB: number;
+	diff: number;
+};
+
+export class BenchmarkResults {
+	// In the format: benchmark name to microseconds
+	// (the benchmark_harness package always outputs in "us" (μs)
+	private results: Record<string, number>;
 
 	private constructor(output: string | undefined) {
-		this.output = output;
+		if (output === undefined) {
+			this.results = {};
+		} else {
+			this.results = BenchmarkResults.parseOutput(output);
+		}
 	}
 
-	getScore(): number {
-		if (this.output === undefined) {
-			return 0;
-		}
-
-		// output in the format: Template(RunTime): 252.7379020979021 us.
+	// The output will be in the format:
+	// Iteration Benchmark(RunTime): 155.3733089882978 us.
+	// Other Benchmark(RunTime): 22.426620587035305 us.
+	private static parseOutput(output: string): Record<string, number> {
 		try {
-			return parseFloat(this.output.split(' ')[1]);
+			return Object.fromEntries(
+				output
+					.trim()
+					.split('\n')
+					.map(line => line.trim())
+					.map(line => {
+						const [key, value] = line.split(': ');
+						return [key.replace(/\(RunTime\)$/, ''), parseFloat(value)];
+					}),
+			);
 		} catch {
-			throw new Error(`Failed to parse benchmark output: ${this.output}`);
+			throw new Error(`Failed to parse benchmark output: ${output}`);
 		}
 	}
 
-	getMessage(): string {
-		const score = this.getScore();
-		if (score === 0) {
-			return '[ERROR]';
-		}
-		return `${score.toFixed(3)} us`;
+	getScore(benchmark: string): number {
+		return this.results[benchmark] ?? 0;
 	}
 
-	static success(output: string): BenchmarkOutput {
-		return new BenchmarkOutput(output.trim());
+	benchmarks(): string[] {
+		return Object.keys(this.results);
 	}
 
-	static error(): BenchmarkOutput {
-		return new BenchmarkOutput(undefined);
+	static success(output: string): BenchmarkResults {
+		return new BenchmarkResults(output.trim());
 	}
 
-	static diffMessage(a: BenchmarkOutput, b: BenchmarkOutput): string {
-		const scoreA = a.getScore();
-		const scoreB = b.getScore();
-		if (scoreA === 0 || scoreB === 0) {
-			return '[ERROR]';
-		}
+	static error(): BenchmarkResults {
+		return new BenchmarkResults(undefined);
+	}
 
-		const diff = ((scoreA - scoreB) / scoreB) * 100;
-		const sign = diff > 0 ? '+' : '';
-		return `${sign}${diff.toFixed(3)} %`;
+	static computeDiffs(
+		a: BenchmarkResults,
+		b: BenchmarkResults,
+	): BenchmarkDiff[] {
+		const allBenchmarks = new Set([...a.benchmarks(), ...b.benchmarks()]);
+		return [...allBenchmarks]
+			.map(benchmark => {
+				const scoreA = a.getScore(benchmark);
+				const scoreB = b.getScore(benchmark);
+				if (scoreA === 0 || scoreB === 0) {
+					return undefined;
+				}
+
+				const diff = ((scoreA - scoreB) / scoreB) * 100;
+				return {
+					benchmark,
+					scoreA,
+					scoreB,
+					diff,
+				};
+			})
+			.filter(diff => diff !== undefined);
 	}
 }
 
 export class ResultMap {
-	private results = new Map<string, BenchmarkOutput>();
+	private results = new Map<string, BenchmarkResults>();
 
 	private static _toKey(project: Project, branch: string): string {
 		return `${project.identifier()}/${branch}`;
 	}
 
-	set(project: Project, branch: string, value: BenchmarkOutput): this {
+	set(project: Project, branch: string, value: BenchmarkResults): this {
 		this.results.set(ResultMap._toKey(project, branch), value);
 		return this;
 	}
 
-	get(project: Project, branch: string): BenchmarkOutput {
+	get(project: Project, branch: string): BenchmarkResults {
 		return (
 			this.results.get(ResultMap._toKey(project, branch)) ??
-			BenchmarkOutput.error()
+			BenchmarkResults.error()
 		);
+	}
+
+	computeDiffs(
+		project: Project,
+		branchA: string,
+		branchB: string,
+	): BenchmarkDiff[] {
+		const a = this.get(project, branchA);
+		const b = this.get(project, branchB);
+		return BenchmarkResults.computeDiffs(a, b);
 	}
 }

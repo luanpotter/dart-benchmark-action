@@ -24,6 +24,6 @@ export type ActionContext = {
 	repository: Repository;
 	prNumber: number;
 	projects: Project[];
-	headBranch: string;
+	currentBranch: string;
 	baseBranch: string;
 };
