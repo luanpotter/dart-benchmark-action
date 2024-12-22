@@ -29951,10 +29951,11 @@ class CommentFormatter {
         this.output.push('## Benchmark Results');
         this.output.push('');
         if (this.projects.length === 0) {
-            this.output.push('> [!WARNING]', '> No projects to benchmark.');
+            this.output.push('> [!WARNING]', '> No projects to benchmark.', '');
         }
         else if (this.projects.length === 1) {
             this.renderSingleProject(this.projects[0]);
+            this.output.push('');
         }
         else {
             for (const project of this.projects) {
@@ -29962,6 +29963,7 @@ class CommentFormatter {
                 this.output.push('');
             }
         }
+        this.renderFinalMessage();
     }
     renderSingleProject(project) {
         const diffs = this.computeDiffs(project);
@@ -29969,7 +29971,7 @@ class CommentFormatter {
             this.renderNoDiffsWarning(project);
             return;
         }
-        this.output.push(`### Package *${project.identifier()}*:\n`);
+        this.output.push(`### Package <b>${project.identifier()}</b>:\n`);
         if (diffs.length === 1) {
             const diff = diffs[0];
             this.renderSingleDiff(diff);
@@ -29977,7 +29979,6 @@ class CommentFormatter {
         else {
             this.renderTableDiff(diffs);
         }
-        this.output.push('');
     }
     renderProject(project) {
         const diffs = this.computeDiffs(project);
@@ -30028,6 +30029,9 @@ class CommentFormatter {
                 this.formatPercentage(diff.diff),
             ]));
         }
+    }
+    renderFinalMessage() {
+        this.output.push('---', '_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)_', '');
     }
     computeDiffs(project) {
         return this.results.computeDiffs(project, this.currentBranch, this.baseBranch);
@@ -30248,12 +30252,46 @@ function logError(error, message) {
 /***/ }),
 
 /***/ 5291:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
 
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ResultMap = exports.BenchmarkResults = void 0;
+const core = __importStar(__nccwpck_require__(7484));
 class BenchmarkResults {
     // In the format: benchmark name to microseconds
     // (the benchmark_harness package always outputs in "us" (μs)
@@ -30270,19 +30308,24 @@ class BenchmarkResults {
     // Iteration Benchmark(RunTime): 155.3733089882978 us.
     // Other Benchmark(RunTime): 22.426620587035305 us.
     static parseOutput(output) {
-        try {
-            return Object.fromEntries(output
-                .trim()
-                .split('\n')
-                .map(line => line.trim())
-                .map(line => {
-                const [key, value] = line.split(': ');
-                return [key.replace(/\(RunTime\)$/, ''), parseFloat(value)];
-            }));
+        const entries = output
+            .trim()
+            .split('\n')
+            .map(line => line.trim());
+        const result = {};
+        for (const entry of entries) {
+            try {
+                const [p1, p2] = entry.split(': ');
+                const name = p1.replace(/\(RunTime\)$/, '');
+                const value = parseFloat(p2);
+                core.info(`Parsed benchmark: ${name} -> ${value}`);
+                result[name] = value;
+            }
+            catch {
+                core.error(`Failed to parse benchmark output: \`${output}\``);
+            }
         }
-        catch {
-            throw new Error(`Failed to parse benchmark output: ${output}`);
-        }
+        return result;
     }
     getScore(benchmark) {
         return this.results[benchmark] ?? 0;

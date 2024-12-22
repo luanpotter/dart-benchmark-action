@@ -34,15 +34,18 @@ export class CommentFormatter {
 		this.output.push('');
 
 		if (this.projects.length === 0) {
-			this.output.push('> [!WARNING]', '> No projects to benchmark.');
+			this.output.push('> [!WARNING]', '> No projects to benchmark.', '');
 		} else if (this.projects.length === 1) {
 			this.renderSingleProject(this.projects[0]);
+			this.output.push('');
 		} else {
 			for (const project of this.projects) {
 				this.renderProject(project);
 				this.output.push('');
 			}
 		}
+
+		this.renderFinalMessage();
 	}
 
 	private renderSingleProject(project: Project): void {
@@ -53,15 +56,13 @@ export class CommentFormatter {
 			return;
 		}
 
-		this.output.push(`### Package *${project.identifier()}*:\n`);
+		this.output.push(`### Package <b>${project.identifier()}</b>:\n`);
 		if (diffs.length === 1) {
 			const diff = diffs[0];
 			this.renderSingleDiff(diff);
 		} else {
 			this.renderTableDiff(diffs);
 		}
-
-		this.output.push('');
 	}
 
 	private renderProject(project: Project): void {
@@ -135,6 +136,14 @@ export class CommentFormatter {
 				]),
 			);
 		}
+	}
+
+	private renderFinalMessage(): void {
+		this.output.push(
+			'---',
+			'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)_',
+			'',
+		);
 	}
 
 	private computeDiffs(project: Project): BenchmarkDiff[] {

@@ -94,6 +94,9 @@ describe('run', () => {
 				' * Diff: 🔴 -0.166 %',
 				'</details>',
 				'',
+				'---',
+				'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)_',
+				'',
 			].join('\n'),
 		});
 	});
@@ -165,6 +168,9 @@ describe('run', () => {
 				' * Diff: 🔴 -0.166 %',
 				'</details>',
 				'',
+				'---',
+				'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)_',
+				'',
 			].join('\n'),
 		});
 	});
@@ -228,6 +234,9 @@ describe('run', () => {
 				' * Base Branch [main]: 200.456 μs',
 				' * Diff: 🔴 -0.166 %',
 				'</details>',
+				'',
+				'---',
+				'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)_',
 				'',
 			].join('\n'),
 		});

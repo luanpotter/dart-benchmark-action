@@ -34,11 +34,14 @@ describe('CommentFormatter', () => {
 		const expected = [
 			'## Benchmark Results',
 			'',
-			'### Package *my-project*:',
+			'### Package <b>my-project</b>:',
 			'',
 			' * Current Branch [feature]: 146.123 μs',
 			' * Base Branch [main]: 155.373 μs',
 			' * Diff: 🔴 -5.953 %',
+			'',
+			'---',
+			'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)_',
 			'',
 		];
 
@@ -97,6 +100,9 @@ describe('CommentFormatter', () => {
 			' * Diff: 🔴 -0.166 %',
 			'</details>',
 			'',
+			'---',
+			'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)_',
+			'',
 		];
 
 		expect(result).toBe(expected.join('\n'));
@@ -139,12 +145,15 @@ describe('CommentFormatter', () => {
 		const expected = [
 			'## Benchmark Results',
 			'',
-			'### Package *my-project*:',
+			'### Package <b>my-project</b>:',
 			'',
 			'| Benchmarks | Current Branch<br/>[feature] | Base Branch<br/>[main] | Diff |',
 			'| ------------- | -------- | -------- | -------- |',
 			'| Iteration Benchmark | 146.123 μs | 155.373 μs | 🔴 -5.953 % |',
 			'| Other Benchmark | 146.123 μs | 155.373 μs | 🔴 -5.953 % |',
+			'',
+			'---',
+			'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)_',
 			'',
 		];
 
@@ -221,6 +230,9 @@ describe('CommentFormatter', () => {
 			'| Other | 200.123 μs | 200.456 μs | 🔴 -0.166 % |',
 			'</details>',
 			'',
+			'---',
+			'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)_',
+			'',
 		];
 
 		expect(result).toBe(expected.join('\n'));
@@ -247,6 +259,10 @@ describe('CommentFormatter', () => {
 			'',
 			'> [!WARNING]',
 			'No benchmark results found for package my-project.',
+			'',
+			'---',
+			'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)_',
+			'',
 		];
 
 		expect(result).toBe(expected.join('\n'));
