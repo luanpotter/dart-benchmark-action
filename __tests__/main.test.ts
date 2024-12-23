@@ -95,7 +95,7 @@ describe('run', () => {
 				'</details>',
 				'',
 				'---',
-				'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)_',
+				'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)._',
 				'',
 			].join('\n'),
 		});
@@ -169,7 +169,7 @@ describe('run', () => {
 				'</details>',
 				'',
 				'---',
-				'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)_',
+				'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)._',
 				'',
 			].join('\n'),
 		});
@@ -236,7 +236,7 @@ describe('run', () => {
 				'</details>',
 				'',
 				'---',
-				'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)_',
+				'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)._',
 				'',
 			].join('\n'),
 		});

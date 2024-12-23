@@ -30031,7 +30031,7 @@ class CommentFormatter {
         }
     }
     renderFinalMessage() {
-        this.output.push('---', '_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)_', '');
+        this.output.push('---', '_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)._', '');
     }
     computeDiffs(project) {
         return this.results.computeDiffs(project, this.currentBranch, this.baseBranch);
@@ -30041,13 +30041,13 @@ class CommentFormatter {
     }
     formatScore(score) {
         if (score === undefined) {
-            return '[ERROR]';
+            return '[-]';
         }
         return `${score.toFixed(3)} μs`;
     }
     formatPercentage(diff) {
         if (diff === undefined) {
-            return '[ERROR]';
+            return '[-]';
         }
         // use emoji arrows for up and down 🟢 🔴
         const emojiArrow = diff > 0 ? '🔴 ' : diff < 0 ? '🔴 ' : '  ';

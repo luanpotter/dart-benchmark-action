@@ -41,7 +41,7 @@ describe('CommentFormatter', () => {
 			' * Diff: 🔴 -5.953 %',
 			'',
 			'---',
-			'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)_',
+			'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)._',
 			'',
 		];
 
@@ -101,7 +101,7 @@ describe('CommentFormatter', () => {
 			'</details>',
 			'',
 			'---',
-			'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)_',
+			'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)._',
 			'',
 		];
 
@@ -153,7 +153,7 @@ describe('CommentFormatter', () => {
 			'| Other Benchmark | 146.123 μs | 155.373 μs | 🔴 -5.953 % |',
 			'',
 			'---',
-			'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)_',
+			'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)._',
 			'',
 		];
 
@@ -231,7 +231,7 @@ describe('CommentFormatter', () => {
 			'</details>',
 			'',
 			'---',
-			'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)_',
+			'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)._',
 			'',
 		];
 
@@ -261,7 +261,7 @@ describe('CommentFormatter', () => {
 			'No benchmark results found for package my-project.',
 			'',
 			'---',
-			'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)_',
+			'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)._',
 			'',
 		];
 

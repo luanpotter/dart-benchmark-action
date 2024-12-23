@@ -141,7 +141,7 @@ export class CommentFormatter {
 	private renderFinalMessage(): void {
 		this.output.push(
 			'---',
-			'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)_',
+			'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)._',
 			'',
 		);
 	}
@@ -160,14 +160,14 @@ export class CommentFormatter {
 
 	private formatScore(score: number | undefined): string {
 		if (score === undefined) {
-			return '[ERROR]';
+			return '[-]';
 		}
 		return `${score.toFixed(3)} μs`;
 	}
 
 	private formatPercentage(diff: number | undefined): string {
 		if (diff === undefined) {
-			return '[ERROR]';
+			return '[-]';
 		}
 
 		// use emoji arrows for up and down 🟢 🔴
