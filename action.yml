@@ -17,3 +17,7 @@ inputs:
       'Comma-separated list of paths to directories of Dart projects containing
       benchmarks to run.'
     required: true
+  ignore-tag:
+    description:
+      'A configurable tag you can add to PRs so benchmarks are not run.'
+    required: false

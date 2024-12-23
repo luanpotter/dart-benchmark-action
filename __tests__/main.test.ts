@@ -17,15 +17,13 @@ Object.defineProperty(github.context, 'repo', {
 describe('run', () => {
 	beforeEach(() => {
 		jest.resetAllMocks();
-		(core.getInput as jest.Mock).mockImplementation(
-			() => 'packages/p1,packages/p2',
-		);
 
 		github.context.payload = {
 			pull_request: {
 				number: 123,
 				head: { ref: 'feature-branch' },
 				base: { ref: 'main' },
+				labels: [{ name: 'ignore-benchmarks' }],
 			},
 		};
 
@@ -33,6 +31,7 @@ describe('run', () => {
 	});
 
 	it('should fetch inputs and execute benchmarks on both branches', async () => {
+		mockActionInput('packages/p1,packages/p2');
 		const mockExec = mockCommandOutputs({
 			'main/p1': 'Template(RunTime): 100.123 us.',
 			'main/p2': 'Template(RunTime): 200.456 us.',
@@ -102,6 +101,7 @@ describe('run', () => {
 	});
 
 	it('should handle package name resolution failure gracefully', async () => {
+		mockActionInput('packages/p1,packages/p2');
 		const mockExec = mockCommandOutputs(
 			{
 				'main/p1': 'Template(RunTime): 100.123 us.',
@@ -176,6 +176,7 @@ describe('run', () => {
 	});
 
 	it('should update an existing comment if present', async () => {
+		mockActionInput('packages/p1,packages/p2');
 		const mockExec = mockCommandOutputs({
 			'main/p1': 'Template(RunTime): 100.123 us.',
 			'main/p2': 'Template(RunTime): 200.456 us.',
@@ -243,6 +244,7 @@ describe('run', () => {
 	});
 
 	it('should fail if no pull request context is available', async () => {
+		mockActionInput('packages/p1,packages/p2');
 		github.context.payload = {};
 
 		await run();
@@ -253,6 +255,8 @@ describe('run', () => {
 	});
 
 	it('should handle benchmark execution errors gracefully', async () => {
+		mockActionInput('packages/p1,packages/p2');
+
 		const mockExec = exec.exec as jest.Mock;
 		mockExec.mockRejectedValue(new Error('Execution failed'));
 
@@ -266,6 +270,21 @@ describe('run', () => {
 		);
 		expect(core.setFailed).toHaveBeenCalled();
 	});
+
+	function mockActionInput(
+		paths: string,
+		ignoreTag: string | undefined = undefined,
+	): void {
+		(core.getInput as jest.Mock).mockImplementation(arg => {
+			if (arg === 'paths') {
+				return paths;
+			} else if (arg === 'ignore-tag') {
+				return ignoreTag;
+			} else {
+				throw new Error(`Unexpected input: ${arg}`);
+			}
+		});
+	}
 
 	function mockCommandOutputs(
 		results: Record<string, string>,

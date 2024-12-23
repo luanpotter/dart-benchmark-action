@@ -30111,6 +30111,9 @@ async function run() {
     try {
         core.info('Collecting information to run benchmarks:');
         const context = await buildContext();
+        if (!context) {
+            return;
+        }
         core.info('Create result map:');
         const results = new result_map_1.ResultMap();
         core.info(`Running benchmarks for ${context.currentBranch}:`);
@@ -30174,6 +30177,7 @@ async function runBenchmark(results, project, branch) {
     results.set(project, branch, result);
 }
 async function buildContext() {
+    const ignoreTag = core.getInput('ignore-tag', { required: false });
     const projectPaths = core
         .getInput('paths', { required: true })
         .split(',')
@@ -30187,6 +30191,17 @@ async function buildContext() {
         throw new Error('This action only works on pull request events.');
     }
     const pullRequest = context.payload.pull_request;
+    // get tags and see if there is `ignore-benchmarks` tag
+    if (ignoreTag !== undefined) {
+        // we need unsafe member access because typescript...
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        const labels = pullRequest.labels;
+        const tags = labels.map(label => label.name);
+        if (tags.includes(ignoreTag)) {
+            core.info(`Ignoring benchmarks because of \`${ignoreTag}\` tag.`);
+            return undefined;
+        }
+    }
     const prNumber = pullRequest.number;
     // we need unsafe member access because typescript...
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access

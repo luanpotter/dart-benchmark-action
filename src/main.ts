@@ -9,6 +9,9 @@ export async function run(): Promise<void> {
 	try {
 		core.info('Collecting information to run benchmarks:');
 		const context = await buildContext();
+		if (!context) {
+			return;
+		}
 
 		core.info('Create result map:');
 		const results = new ResultMap();
@@ -94,7 +97,9 @@ async function runBenchmark(
 	results.set(project, branch, result);
 }
 
-async function buildContext(): Promise<ActionContext> {
+async function buildContext(): Promise<ActionContext | undefined> {
+	const ignoreTag = core.getInput('ignore-tag', { required: false });
+
 	const projectPaths = core
 		.getInput('paths', { required: true })
 		.split(',')
@@ -112,6 +117,18 @@ async function buildContext(): Promise<ActionContext> {
 	}
 
 	const pullRequest = context.payload.pull_request;
+
+	// get tags and see if there is `ignore-benchmarks` tag
+	if (ignoreTag !== undefined) {
+		// we need unsafe member access because typescript...
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+		const labels = pullRequest.labels as { name: string }[];
+		const tags: string[] = labels.map(label => label.name);
+		if (tags.includes(ignoreTag)) {
+			core.info(`Ignoring benchmarks because of \`${ignoreTag}\` tag.`);
+			return undefined;
+		}
+	}
 
 	const prNumber: number = pullRequest.number;
 	// we need unsafe member access because typescript...
