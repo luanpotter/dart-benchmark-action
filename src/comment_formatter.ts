@@ -170,11 +170,11 @@ export class CommentFormatter {
 			return '[-]';
 		}
 
-		// use emoji arrows for up and down 🟢 🔴
-		const emojiArrow = diff > 0 ? '🔴 ' : diff < 0 ? '🔴 ' : '  ';
+		// use emojis for up and down 🟢 🔴
+		const emojiArrow = diff < 0 ? '🟢' : diff > 0 ? '🔴' : ' ';
 
 		const diffSign = diff > 0 ? '+' : diff < 0 ? '-' : ' ';
 		const diffValue = Math.abs(diff).toFixed(3);
-		return `${emojiArrow}${diffSign}${diffValue} %`;
+		return `${emojiArrow} ${diffSign}${diffValue} %`;
 	}
 }
