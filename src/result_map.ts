@@ -28,14 +28,15 @@ export class BenchmarkResults {
 		const entries = output
 			.trim()
 			.split('\n')
-			.map(line => line.trim());
+			.map(line => line.trim())
+			.filter(line => line.match(/^.*\(RunTime\): .* us.$/));
 
 		const results: Record<string, number> = {};
 		for (const entry of entries) {
 			try {
 				const [p1, p2] = entry.split(': ');
 				const name = p1.replace(/\(RunTime\)$/, '');
-				const value = parseFloat(p2);
+				const value = parseFloat(p2.replace(' us.', ''));
 				core.info(`Parsed benchmark: ${name} -> ${value}`);
 				results[name] = value;
 			} catch {
