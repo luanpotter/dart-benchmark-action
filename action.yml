@@ -21,3 +21,7 @@ inputs:
     description:
       'A configurable tag you can add to PRs so benchmarks are not run.'
     required: false
+  is-flutter:
+    description: 'Whether to run the benchmark on Flutter mode or Dart mode.'
+    required: false
+    default: 'false'

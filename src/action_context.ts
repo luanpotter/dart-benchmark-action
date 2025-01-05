@@ -23,6 +23,7 @@ export type ActionContext = {
 	githubToken: string;
 	repository: Repository;
 	prNumber: number;
+	isFlutter: boolean;
 	projects: Project[];
 	currentBranch: string;
 	baseBranch: string;

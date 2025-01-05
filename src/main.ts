@@ -17,18 +17,14 @@ export async function run(): Promise<void> {
 		const results = new ResultMap();
 
 		core.info(`Running benchmarks for ${context.currentBranch}:`);
-		for (const project of context.projects) {
-			await runBenchmark(results, project, context.currentBranch);
-		}
+		await runBenchmarks(context, results, context.currentBranch);
 
 		core.info('Fetching main branch...');
-		await executeCommand('git', ['fetch', 'origin', context.baseBranch]);
-		await executeCommand('git', ['checkout', context.baseBranch]);
+		await executeCommand(`git fetch origin ${context.baseBranch}`);
+		await executeCommand(`git checkout ${context.baseBranch}`);
 
 		core.info(`Running benchmarks for ${context.baseBranch}:`);
-		for (const project of context.projects) {
-			await runBenchmark(results, project, context.baseBranch);
-		}
+		await runBenchmarks(context, results, context.baseBranch);
 
 		core.info(`Compiling results into comment body:`);
 		const commentFormatter = new CommentFormatter(
@@ -74,8 +70,28 @@ async function createOrUpdateComment(
 	}
 }
 
+// for dart-mode, we can just run
+// dart run $path/benchmark/main.dart
+// but for flutter-mode, we need to hack it with flutter test
+// flutter test $path/benchmark/main.dart -r silent 2>/dev/null || true
+// sadly there does not seem to be any other way
+async function runBenchmarks(
+	context: ActionContext,
+	results: ResultMap,
+	branch: string,
+): Promise<void> {
+	for (const project of context.projects) {
+		const { path } = project;
+		const command = context.isFlutter
+			? `(cd ${path} ; flutter test benchmark/main.dart -r silent) 2>/dev/null || true`
+			: `(cd ${path} ; dart run benchmark/main.dart)`;
+		await runBenchmark(results, command, project, branch);
+	}
+}
+
 async function runBenchmark(
 	results: ResultMap,
+	command: string,
 	project: Project,
 	branch: string,
 ): Promise<void> {
@@ -84,10 +100,7 @@ async function runBenchmark(
 
 	let result: BenchmarkResults;
 	try {
-		const output = await executeCommand('dart', [
-			'run',
-			`${path}/benchmark/main.dart`,
-		]);
+		const output = await executeCommand(command);
 		result = BenchmarkResults.success(output);
 	} catch (error) {
 		logError(error, `Failed to run benchmark for ${path} on branch ${branch}`);
@@ -98,6 +111,7 @@ async function runBenchmark(
 }
 
 async function buildContext(): Promise<ActionContext | undefined> {
+	const isFlutter = core.getBooleanInput('is-flutter', { required: true });
 	const ignoreTag = core.getInput('ignore-tag', { required: false });
 
 	const projectPaths = core
@@ -150,6 +164,7 @@ async function buildContext(): Promise<ActionContext | undefined> {
 			repo: context.repo.repo,
 		},
 		prNumber,
+		isFlutter,
 		projects,
 		currentBranch,
 		baseBranch,
@@ -158,10 +173,9 @@ async function buildContext(): Promise<ActionContext | undefined> {
 
 async function extractProjectName(path: string): Promise<string | undefined> {
 	try {
-		const output = await executeCommand(`/bin/bash -c "`, [
-			'-c',
+		const output = await executeCommand(
 			`(cd ${path} ; cat pubspec.yaml | grep "^name:"| perl -pe 's/^name: (.*)$/$1/')`,
-		]);
+		);
 		return output.trim();
 	} catch (error) {
 		logError(error, `Failed to extract project name for ${path}`);
@@ -169,15 +183,12 @@ async function extractProjectName(path: string): Promise<string | undefined> {
 	}
 }
 
-async function executeCommand(
-	command: string,
-	args: string[],
-): Promise<string> {
+async function executeCommand(command: string): Promise<string> {
 	let output = '';
 	let error = '';
 
-	core.info(` + Running command: ${command} ${args.join(' ')}`);
-	const resultCode = await exec(command, args, {
+	core.info(` + Running command: ${command}`);
+	const resultCode = await exec('/bin/bash', ['-c', command], {
 		listeners: {
 			stdout: (data: Buffer) => {
 				output += data.toString();
@@ -190,7 +201,7 @@ async function executeCommand(
 
 	if (resultCode !== 0) {
 		throw new Error(
-			`Command ${[command, ...args].join(' ')} failed with ${resultCode}: ${error}`,
+			`Command \`${command}\` failed with ${resultCode}: ${error}`,
 		);
 	}
 

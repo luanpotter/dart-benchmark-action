@@ -30117,16 +30117,12 @@ async function run() {
         core.info('Create result map:');
         const results = new result_map_1.ResultMap();
         core.info(`Running benchmarks for ${context.currentBranch}:`);
-        for (const project of context.projects) {
-            await runBenchmark(results, project, context.currentBranch);
-        }
+        await runBenchmarks(context, results, context.currentBranch);
         core.info('Fetching main branch...');
-        await executeCommand('git', ['fetch', 'origin', context.baseBranch]);
-        await executeCommand('git', ['checkout', context.baseBranch]);
+        await executeCommand(`git fetch origin ${context.baseBranch}`);
+        await executeCommand(`git checkout ${context.baseBranch}`);
         core.info(`Running benchmarks for ${context.baseBranch}:`);
-        for (const project of context.projects) {
-            await runBenchmark(results, project, context.baseBranch);
-        }
+        await runBenchmarks(context, results, context.baseBranch);
         core.info(`Compiling results into comment body:`);
         const commentFormatter = new comment_formatter_1.CommentFormatter(context.projects, context.currentBranch, context.baseBranch, results);
         core.info(`Creating or updating comment on GitHub:`);
@@ -30159,15 +30155,26 @@ async function createOrUpdateComment(context, commentBody) {
         });
     }
 }
-async function runBenchmark(results, project, branch) {
+// for dart-mode, we can just run
+// dart run $path/benchmark/main.dart
+// but for flutter-mode, we need to hack it with flutter test
+// flutter test $path/benchmark/main.dart -r silent 2>/dev/null || true
+// sadly there does not seem to be any other way
+async function runBenchmarks(context, results, branch) {
+    for (const project of context.projects) {
+        const { path } = project;
+        const command = context.isFlutter
+            ? `(cd ${path} ; flutter test benchmark/main.dart -r silent) 2>/dev/null || true`
+            : `(cd ${path} ; dart run benchmark/main.dart)`;
+        await runBenchmark(results, command, project, branch);
+    }
+}
+async function runBenchmark(results, command, project, branch) {
     const { path } = project;
     core.info(`+ Running benchmarks for ${path} on branch ${branch}:`);
     let result;
     try {
-        const output = await executeCommand('dart', [
-            'run',
-            `${path}/benchmark/main.dart`,
-        ]);
+        const output = await executeCommand(command);
         result = result_map_1.BenchmarkResults.success(output);
     }
     catch (error) {
@@ -30177,6 +30184,7 @@ async function runBenchmark(results, project, branch) {
     results.set(project, branch, result);
 }
 async function buildContext() {
+    const isFlutter = core.getBooleanInput('is-flutter', { required: true });
     const ignoreTag = core.getInput('ignore-tag', { required: false });
     const projectPaths = core
         .getInput('paths', { required: true })
@@ -30216,6 +30224,7 @@ async function buildContext() {
             repo: context.repo.repo,
         },
         prNumber,
+        isFlutter,
         projects,
         currentBranch,
         baseBranch,
@@ -30223,10 +30232,7 @@ async function buildContext() {
 }
 async function extractProjectName(path) {
     try {
-        const output = await executeCommand(`/bin/bash -c "`, [
-            '-c',
-            `(cd ${path} ; cat pubspec.yaml | grep "^name:"| perl -pe 's/^name: (.*)$/$1/')`,
-        ]);
+        const output = await executeCommand(`(cd ${path} ; cat pubspec.yaml | grep "^name:"| perl -pe 's/^name: (.*)$/$1/')`);
         return output.trim();
     }
     catch (error) {
@@ -30234,11 +30240,11 @@ async function extractProjectName(path) {
         return undefined;
     }
 }
-async function executeCommand(command, args) {
+async function executeCommand(command) {
     let output = '';
     let error = '';
-    core.info(` + Running command: ${command} ${args.join(' ')}`);
-    const resultCode = await (0, exec_1.exec)(command, args, {
+    core.info(` + Running command: ${command}`);
+    const resultCode = await (0, exec_1.exec)('/bin/bash', ['-c', command], {
         listeners: {
             stdout: (data) => {
                 output += data.toString();
@@ -30249,7 +30255,7 @@ async function executeCommand(command, args) {
         },
     });
     if (resultCode !== 0) {
-        throw new Error(`Command ${[command, ...args].join(' ')} failed with ${resultCode}: ${error}`);
+        throw new Error(`Command \`${command}\` failed with ${resultCode}: ${error}`);
     }
     return output;
 }
