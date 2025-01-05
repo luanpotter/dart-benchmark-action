@@ -103,6 +103,78 @@ describe('run', () => {
 		});
 	});
 
+	it('multiple templates are supported and extra lines are ignored', async () => {
+		mockActionInput({ paths: 'packages/p1' });
+		const mockExec = mockCommandOutputs({
+			'main/p1': [
+				'[extra lines are ignored]',
+				'T1(RunTime): 100.456 us.',
+				'[extra lines are ignored]',
+				'T2(RunTime): 200.456 us.',
+				'[extra lines are ignored]',
+			].join('\n'),
+			'feature-branch/p1': [
+				'T1(RunTime): 100.123 us.',
+				'T3(RunTime): 300.123 us.',
+				'[extra lines are ignored]',
+				'[extra lines are ignored]',
+				'[extra lines are ignored]',
+			].join('\n'),
+		});
+
+		const mockComments = jest.fn().mockResolvedValueOnce({ data: [] });
+		const mockCreateComment = jest.fn();
+		const mockUpdateComment = jest.fn();
+
+		(github.getOctokit as jest.Mock).mockReturnValue({
+			rest: {
+				issues: {
+					listComments: mockComments,
+					createComment: mockCreateComment,
+					updateComment: mockUpdateComment,
+				},
+			},
+		});
+
+		await run();
+
+		// name extraction
+		expectExec(
+			mockExec,
+			'(cd packages/p1 ; cat pubspec.yaml | grep "^name:"| perl -pe \'s/^name: (.*)$/$1/\')',
+		);
+
+		// benchmark execution
+		expectExec(mockExec, '(cd packages/p1 ; dart run benchmark/main.dart)');
+
+		expect(mockComments).toHaveBeenCalledWith({
+			owner: 'owner',
+			repo: 'repo',
+			issue_number: 123,
+		});
+
+		expect(mockCreateComment).toHaveBeenCalledWith({
+			owner: 'owner',
+			repo: 'repo',
+			issue_number: 123,
+			body: [
+				'## Benchmark Results',
+				'',
+				'### Package <b>p1</b>:',
+				'',
+				'| Benchmarks | Current Branch<br/>[feature-branch] | Base Branch<br/>[main] | Diff |',
+				'| ------------- | -------- | -------- | -------- |',
+				'| T1 | 100.123 μs | 100.456 μs | 🟢 -0.331 % |',
+				'| T3 | 300.123 μs | [-] | [-] |',
+				'| T2 | [-] | 200.456 μs | [-] |',
+				'',
+				'---',
+				'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)._',
+				'',
+			].join('\n'),
+		});
+	});
+
 	it('should execute in flutter mode', async () => {
 		mockActionInput({ paths: 'packages/p1,packages/p2', isFlutter: true });
 		const mockExec = mockCommandOutputs({
@@ -378,7 +450,7 @@ describe('run', () => {
 		let isMain = false;
 		mockExec.mockImplementation(
 			async (
-				bash,
+				_, // 'bash' command
 				args: string[],
 				options: {
 					listeners?: { stdout: (data: string) => void };
