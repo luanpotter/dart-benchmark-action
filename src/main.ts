@@ -35,7 +35,13 @@ export async function run(): Promise<void> {
 		);
 
 		core.info(`Creating or updating comment on GitHub:`);
-		await createOrUpdateComment(context, commentFormatter.format());
+		try {
+			await createOrUpdateComment(context, commentFormatter.format());
+		} catch (error) {
+			logError(error, 'Failed to create or update comment on GitHub.');
+			// do not set the status to failed; this is not the PR's fault!
+			return;
+		}
 	} catch (error) {
 		if (error instanceof Error) core.setFailed(error.message);
 	}
