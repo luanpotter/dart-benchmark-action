@@ -43,3 +43,22 @@ To build, lint, and run tests locally, run:
   npm install
   npm run all
 ```
+
+## Running Locally
+
+You can run the action on your machine with
+[`local-action`](https://github.com/github/local-action), using the inputs and
+pull request described in `examples/local`:
+
+```bash
+  cp examples/local/.env.example .env
+  npm run local-action
+```
+
+Do this in a throwaway clone, as the action really does run:
+
+- `git fetch` and `git checkout` in your working tree, switching your branch.
+- The benchmarks, using `dart` or `flutter` from your `PATH`.
+- Requests to the real GitHub API. With a real token, repository and pull
+  request number, it will post a real comment. The placeholder token in the
+  example makes that step fail, and the run still finishes.
