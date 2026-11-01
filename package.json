@@ -76,6 +76,11 @@
 			"./src/**"
 		]
 	},
+	"overrides": {
+		"@github/local-action": {
+			"undici": "^6.29.1"
+		}
+	},
 	"dependencies": {
 		"@actions/core": "^3.0.1",
 		"@actions/exec": "^3.0.0",
