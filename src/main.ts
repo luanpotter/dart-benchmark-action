@@ -195,6 +195,7 @@ async function executeCommand(command: string): Promise<string> {
 
 	core.info(` + Running command: ${command}`);
 	const resultCode = await exec('/bin/bash', ['-c', command], {
+		env: buildCommandEnv(),
 		listeners: {
 			stdout: (data: Buffer) => {
 				output += data.toString();
@@ -212,6 +213,15 @@ async function executeCommand(command: string): Promise<string> {
 	}
 
 	return output;
+}
+
+// remove github token from the context of the benchmark running from a PR
+function buildCommandEnv(): Record<string, string> {
+	const entries = Object.entries(process.env).filter(
+		(entry): entry is [string, string] =>
+			entry[0] !== 'GITHUB_TOKEN' && entry[1] !== undefined,
+	);
+	return Object.fromEntries(entries);
 }
 
 function logError(error: unknown, message: string): void {

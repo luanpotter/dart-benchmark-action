@@ -409,6 +409,37 @@ describe('run', () => {
 		expect(core.setFailed).toHaveBeenCalled();
 	});
 
+	it('should run commands in the step environment and keep the token for commenting', async () => {
+		mockActionInput({ paths: 'packages/p1' });
+		const mockExec = mockCommandOutputs({
+			'main/p1': 'Template(RunTime): 100.123 us.',
+			'feature-branch/p1': 'Template(RunTime): 100.456 us.',
+		});
+
+		const mockCreateComment = jest.fn();
+		(github.getOctokit as jest.Mock).mockReturnValue({
+			rest: {
+				issues: {
+					listComments: jest.fn().mockResolvedValueOnce({ data: [] }),
+					createComment: mockCreateComment,
+				},
+			},
+		});
+
+		await run();
+
+		const commandEnv = { ...process.env };
+		delete commandEnv.GITHUB_TOKEN;
+		const calls = mockExec.mock.calls as [string, string[], exec.ExecOptions][];
+		// name extraction, head benchmark, git fetch, git checkout, base benchmark
+		expect(calls.map(([, , options]) => options.env)).toEqual(
+			Array(5).fill(commandEnv),
+		);
+
+		expect(github.getOctokit).toHaveBeenCalledWith('fake-token');
+		expect(mockCreateComment).toHaveBeenCalled();
+	});
+
 	function mockActionInput({
 		paths,
 		ignoreTag = undefined,
