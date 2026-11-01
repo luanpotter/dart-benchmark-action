@@ -1,7 +1,7 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
 import { exec } from '@actions/exec';
-import { BenchmarkResults, ResultMap } from './result_map.js';
+import { BenchmarkResults, ResultMap, type Side } from './result_map.js';
 import { type ActionContext, Project } from './action_context.js';
 import { CommentFormatter } from './comment_formatter.js';
 
@@ -17,14 +17,14 @@ export async function run(): Promise<void> {
 		const results = new ResultMap();
 
 		core.info(`Running benchmarks for ${context.currentBranch}:`);
-		await runBenchmarks(context, results, context.currentBranch);
+		await runBenchmarks(context, results, 'head', context.currentBranch);
 
 		core.info('Fetching main branch...');
 		await executeCommand(`git fetch origin ${context.baseBranch}`);
 		await executeCommand(`git checkout ${context.baseBranch}`);
 
 		core.info(`Running benchmarks for ${context.baseBranch}:`);
-		await runBenchmarks(context, results, context.baseBranch);
+		await runBenchmarks(context, results, 'base', context.baseBranch);
 
 		core.info(`Compiling results into comment body:`);
 		const commentFormatter = new CommentFormatter(
@@ -84,6 +84,7 @@ async function createOrUpdateComment(
 async function runBenchmarks(
 	context: ActionContext,
 	results: ResultMap,
+	side: Side,
 	branch: string,
 ): Promise<void> {
 	for (const project of context.projects) {
@@ -91,7 +92,7 @@ async function runBenchmarks(
 		const command = context.isFlutter
 			? `(cd ${path} ; flutter test benchmark/main.dart -r silent) 2>/dev/null || true`
 			: `(cd ${path} ; dart run benchmark/main.dart)`;
-		await runBenchmark(results, command, project, branch);
+		await runBenchmark(results, command, project, side, branch);
 	}
 }
 
@@ -99,6 +100,7 @@ async function runBenchmark(
 	results: ResultMap,
 	command: string,
 	project: Project,
+	side: Side,
 	branch: string,
 ): Promise<void> {
 	const { path } = project;
@@ -113,7 +115,7 @@ async function runBenchmark(
 		result = BenchmarkResults.error();
 	}
 
-	results.set(project, branch, result);
+	results.set(project, side, result);
 }
 
 async function buildContext(): Promise<ActionContext | undefined> {

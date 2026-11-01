@@ -88,32 +88,33 @@ export class BenchmarkResults {
 	}
 }
 
+// A side of the pull request. Branch names cannot tell these apart, as a fork
+// can open a pull request from its `main` into the `main` of the base repository.
+export type Side = 'head' | 'base';
+
 export class ResultMap {
 	private results = new Map<string, BenchmarkResults>();
 
-	private static _toKey(project: Project, branch: string): string {
-		return `${project.identifier()}/${branch}`;
+	private static _toKey(project: Project, side: Side): string {
+		return `${project.identifier()}/${side}`;
 	}
 
-	set(project: Project, branch: string, value: BenchmarkResults): this {
-		this.results.set(ResultMap._toKey(project, branch), value);
+	set(project: Project, side: Side, value: BenchmarkResults): this {
+		this.results.set(ResultMap._toKey(project, side), value);
 		return this;
 	}
 
-	get(project: Project, branch: string): BenchmarkResults {
+	get(project: Project, side: Side): BenchmarkResults {
 		return (
-			this.results.get(ResultMap._toKey(project, branch)) ??
+			this.results.get(ResultMap._toKey(project, side)) ??
 			BenchmarkResults.error()
 		);
 	}
 
-	computeDiffs(
-		project: Project,
-		branchA: string,
-		branchB: string,
-	): BenchmarkDiff[] {
-		const a = this.get(project, branchA);
-		const b = this.get(project, branchB);
-		return BenchmarkResults.computeDiffs(a, b);
+	computeDiffs(project: Project): BenchmarkDiff[] {
+		return BenchmarkResults.computeDiffs(
+			this.get(project, 'head'),
+			this.get(project, 'base'),
+		);
 	}
 }
