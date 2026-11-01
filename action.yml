@@ -38,25 +38,54 @@ inputs:
 runs:
   using: composite
   steps:
+    # Only sets up what is missing, so earlier steps in the job are not undone.
+    - name: Detect Setup
+      id: detect
+      shell: bash
+      run: |
+        if [ -d .git ]; then
+          echo "Using the existing checkout."
+          echo "checkout=true" >> "$GITHUB_OUTPUT"
+        fi
+        if command -v dart > /dev/null; then
+          echo "Using the existing Dart: $(command -v dart)"
+          echo "dart=true" >> "$GITHUB_OUTPUT"
+        fi
+        if command -v flutter > /dev/null; then
+          echo "Using the existing Flutter: $(command -v flutter)"
+          echo "flutter=true" >> "$GITHUB_OUTPUT"
+        fi
+        if [ "$(node -p 'parseInt(process.versions.node)' 2> /dev/null || echo 0)" -ge 24 ]; then
+          echo "Using the existing Node.js: $(command -v node)"
+          echo "node=true" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Checkout
-      if: github.event_name == 'pull_request'
+      if:
+        github.event_name == 'pull_request' && steps.detect.outputs.checkout !=
+        'true'
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         fetch-depth: 0
         persist-credentials: false
 
     - name: Setup Dart
-      if: github.event_name == 'pull_request' && inputs.is-flutter != 'true'
+      if:
+        github.event_name == 'pull_request' && inputs.is-flutter != 'true' &&
+        steps.detect.outputs.dart != 'true'
       uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
       with:
         # inside a composite action, it looks for its matcher file in this action
         problem-matcher: 'false'
 
     - name: Setup Flutter
-      if: github.event_name == 'pull_request' && inputs.is-flutter == 'true'
+      if:
+        github.event_name == 'pull_request' && inputs.is-flutter == 'true' &&
+        steps.detect.outputs.flutter != 'true'
       uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
 
     - name: Setup Node.js
+      if: steps.detect.outputs.node != 'true'
       uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version: '24'
