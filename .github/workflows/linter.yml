@@ -8,15 +8,21 @@ on:
     branches:
       - main
 
-permissions:
-  contents: read
-  packages: read
-  statuses: write
+permissions: {}
+
+# runs on main finish, so that each commit there has a result
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   lint:
     name: Lint Codebase
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read # to pull the Super-linter image
+      statuses: write # to report the result of each linter
 
     steps:
       - name: Checkout

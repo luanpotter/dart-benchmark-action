@@ -10,16 +10,21 @@ on:
   schedule:
     - cron: '31 7 * * 3'
 
-permissions:
-  actions: read
-  checks: write
-  contents: read
-  security-events: write
+permissions: {}
+
+# runs on main finish, so that each commit there has a result
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   analyze:
     name: Analyze
     runs-on: ubuntu-latest
+    permissions:
+      actions: read # to read the workflow run
+      contents: read
+      security-events: write # to upload the results of the analysis
 
     strategy:
       fail-fast: false

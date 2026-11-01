@@ -23,6 +23,11 @@ on:
 permissions:
   contents: read
 
+# runs on main and tags finish, so that each of those has a result
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   check-dist:
     name: Check dist/

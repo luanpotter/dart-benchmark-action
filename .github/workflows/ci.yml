@@ -11,6 +11,11 @@ on:
 permissions:
   contents: read
 
+# runs on main finish, so that each commit there has a result
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test-typescript:
     name: TypeScript Tests
