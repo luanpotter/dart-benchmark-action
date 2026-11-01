@@ -1,6 +1,6 @@
-import { CommentFormatter } from '../src/comment_formatter';
-import { BenchmarkResults, ResultMap } from '../src/result_map';
-import { Project } from '../src/action_context';
+import { CommentFormatter } from '../src/comment_formatter.js';
+import { BenchmarkResults, ResultMap } from '../src/result_map.js';
+import { Project } from '../src/action_context.js';
 
 describe('CommentFormatter', () => {
 	it('single project, single diff, success', () => {
