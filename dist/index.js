@@ -30252,6 +30252,7 @@ async function executeCommand(command) {
     let error = '';
     core.info(` + Running command: ${command}`);
     const resultCode = await (0, exec_1.exec)('/bin/bash', ['-c', command], {
+        env: buildCommandEnv(),
         listeners: {
             stdout: (data) => {
                 output += data.toString();
@@ -30265,6 +30266,11 @@ async function executeCommand(command) {
         throw new Error(`Command \`${command}\` failed with ${resultCode}: ${error}`);
     }
     return output;
+}
+// remove github token from the context of the benchmark running from a PR
+function buildCommandEnv() {
+    const entries = Object.entries(process.env).filter((entry) => entry[0] !== 'GITHUB_TOKEN' && entry[1] !== undefined);
+    return Object.fromEntries(entries);
 }
 function logError(error, message) {
     if (error instanceof Error) {
