@@ -144,6 +144,74 @@ describe('run', () => {
 		});
 	});
 
+	it('should run the build command in each project before each benchmark, on both branches', async () => {
+		mockActionInput({
+			paths: 'packages/p1,packages/p2',
+			buildCommand: 'make codegen',
+		});
+		mockCommandOutputs({
+			'main/p1': 'Template(RunTime): 100.123 us.',
+			'main/p2': 'Template(RunTime): 200.456 us.',
+			'feature-branch/p1': 'Template(RunTime): 100.456 us.',
+			'feature-branch/p2': 'Template(RunTime): 200.123 us.',
+		});
+		const { createComment } = mockOctokit();
+
+		await run();
+
+		const commands = mockExec.mock.calls.map(([, args]) => args[1]);
+		expect(commands.slice(2)).toEqual([
+			'(cd packages/p1 ; make codegen)',
+			'(cd packages/p1 ; dart run benchmark/main.dart)',
+			'(cd packages/p2 ; make codegen)',
+			'(cd packages/p2 ; dart run benchmark/main.dart)',
+			'git fetch origin main',
+			'git checkout main',
+			'(cd packages/p1 ; make codegen)',
+			'(cd packages/p1 ; dart run benchmark/main.dart)',
+			'(cd packages/p2 ; make codegen)',
+			'(cd packages/p2 ; dart run benchmark/main.dart)',
+		]);
+		expect(createComment).toHaveBeenCalledTimes(1);
+	});
+
+	it('should report a branch with no results if its build fails, and still run the other', async () => {
+		mockActionInput({ paths: 'packages/p1', buildCommand: 'make codegen' });
+		mockCommandOutputs(
+			{
+				'main/p1': 'Template(RunTime): 100.123 us.',
+				'feature-branch/p1': 'Template(RunTime): 100.456 us.',
+			},
+			{ failBuildOn: 'feature-branch' },
+		);
+		const { createComment } = mockOctokit();
+
+		await run();
+
+		expect(error).toHaveBeenCalledWith(
+			'+ Failed to build packages/p1 on branch feature-branch: Build failed',
+		);
+		expect(setFailed).not.toHaveBeenCalled();
+		expect(createComment).toHaveBeenCalledWith({
+			owner: 'owner',
+			repo: 'repo',
+			issue_number: 123,
+			body: [
+				'## Benchmark Results',
+				'',
+				'### Package <b>p1</b>:',
+				'',
+				' * Current Branch [feature-branch]: [-]',
+				' * Base Branch [main]: 100.123 μs',
+				' * Diff: [-]',
+				'',
+				'---',
+				'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)._',
+				'',
+			].join('\n'),
+		});
+	});
+
 	it('multiple templates are supported and extra lines are ignored', async () => {
 		mockActionInput({ paths: 'packages/p1' });
 		mockCommandOutputs({
@@ -435,16 +503,20 @@ describe('run', () => {
 		paths,
 		ignoreTag = undefined,
 		isFlutter = false,
+		buildCommand = '',
 	}: {
 		paths: string;
 		ignoreTag?: string;
 		isFlutter?: boolean;
+		buildCommand?: string;
 	}): void {
 		getInput.mockImplementation(arg => {
 			if (arg === 'paths') {
 				return paths;
 			} else if (arg === 'ignore-tag') {
 				return ignoreTag;
+			} else if (arg === 'build-command') {
+				return buildCommand;
 			} else {
 				throw new Error(`Unexpected input: ${arg}`);
 			}
@@ -477,12 +549,11 @@ describe('run', () => {
 	function mockCommandOutputs(
 		results: Record<string, string>,
 		options: {
-			failPackageNameResolution: boolean;
-		} = {
-			failPackageNameResolution: false,
-		},
+			failPackageNameResolution?: boolean;
+			failBuildOn?: 'feature-branch' | 'main';
+		} = {},
 	): void {
-		const { failPackageNameResolution } = options;
+		const { failPackageNameResolution = false, failBuildOn } = options;
 
 		let isMain = false;
 		mockExec.mockImplementation(async (_, args, execOptions) => {
@@ -491,6 +562,10 @@ describe('run', () => {
 			let response: string | undefined;
 			if (command.startsWith('git ')) {
 				isMain = true;
+			} else if (command.includes('; make codegen')) {
+				if (failBuildOn === (isMain ? 'main' : 'feature-branch')) {
+					throw new Error('Build failed');
+				}
 			} else if (
 				command.includes('; dart ') ||
 				command.includes('; flutter ')

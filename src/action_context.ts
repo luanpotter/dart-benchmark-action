@@ -24,6 +24,7 @@ export type ActionContext = {
 	repository: Repository;
 	prNumber: number;
 	isFlutter: boolean;
+	buildCommand: string | undefined;
 	projects: Project[];
 	currentBranch: string;
 	baseBranch: string;
