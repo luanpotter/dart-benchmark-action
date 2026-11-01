@@ -31,3 +31,9 @@ inputs:
       branches, such as to generate code. If it fails, that branch is reported
       as having no results.'
     required: false
+  run-command:
+    description:
+      'A command to run the benchmarks in each project path, instead of the
+      default for Dart or Flutter, which also overrides is-flutter. It must
+      print lines such as "Name(RunTime): 1.23 us." to stdout.'
+    required: false

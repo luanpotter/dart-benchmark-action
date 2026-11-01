@@ -35213,9 +35213,16 @@ async function createOrUpdateComment(context, commentBody) {
 async function runBenchmarks(context, results, side, branch) {
     for (const project of context.projects) {
         const { path } = project;
-        const command = context.isFlutter
-            ? `(cd ${path} ; flutter test benchmark/main.dart -r silent) 2>/dev/null || true`
-            : `(cd ${path} ; dart run benchmark/main.dart)`;
+        let command;
+        if (context.runCommand) {
+            command = `(cd ${path} ; ${context.runCommand})`;
+        }
+        else if (context.isFlutter) {
+            command = `(cd ${path} ; flutter test benchmark/main.dart -r silent) 2>/dev/null || true`;
+        }
+        else {
+            command = `(cd ${path} ; dart run benchmark/main.dart)`;
+        }
         await runBenchmark(results, context.buildCommand, command, project, side, branch);
     }
 }
@@ -35248,6 +35255,7 @@ async function buildContext() {
     const isFlutter = getBooleanInput('is-flutter', { required: true });
     const ignoreTag = getInput('ignore-tag', { required: false });
     const buildCommand = getInput('build-command', { required: false }) || undefined;
+    const runCommand = getInput('run-command', { required: false }) || undefined;
     const projectPaths = getInput('paths', { required: true })
         .split(',')
         .map(path => path.trim());
@@ -35287,6 +35295,7 @@ async function buildContext() {
         prNumber,
         isFlutter,
         buildCommand,
+        runCommand,
         projects,
         currentBranch,
         baseBranch,

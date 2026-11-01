@@ -89,9 +89,14 @@ async function runBenchmarks(
 ): Promise<void> {
 	for (const project of context.projects) {
 		const { path } = project;
-		const command = context.isFlutter
-			? `(cd ${path} ; flutter test benchmark/main.dart -r silent) 2>/dev/null || true`
-			: `(cd ${path} ; dart run benchmark/main.dart)`;
+		let command: string;
+		if (context.runCommand) {
+			command = `(cd ${path} ; ${context.runCommand})`;
+		} else if (context.isFlutter) {
+			command = `(cd ${path} ; flutter test benchmark/main.dart -r silent) 2>/dev/null || true`;
+		} else {
+			command = `(cd ${path} ; dart run benchmark/main.dart)`;
+		}
 		await runBenchmark(
 			results,
 			context.buildCommand,
@@ -143,6 +148,8 @@ async function buildContext(): Promise<ActionContext | undefined> {
 	const ignoreTag = core.getInput('ignore-tag', { required: false });
 	const buildCommand =
 		core.getInput('build-command', { required: false }) || undefined;
+	const runCommand =
+		core.getInput('run-command', { required: false }) || undefined;
 
 	const projectPaths = core
 		.getInput('paths', { required: true })
@@ -195,6 +202,7 @@ async function buildContext(): Promise<ActionContext | undefined> {
 		prNumber,
 		isFlutter,
 		buildCommand,
+		runCommand,
 		projects,
 		currentBranch,
 		baseBranch,

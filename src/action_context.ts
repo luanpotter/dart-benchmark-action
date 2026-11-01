@@ -25,6 +25,7 @@ export type ActionContext = {
 	prNumber: number;
 	isFlutter: boolean;
 	buildCommand: string | undefined;
+	runCommand: string | undefined;
 	projects: Project[];
 	currentBranch: string;
 	baseBranch: string;
