@@ -8,10 +8,9 @@ export default {
 	output: {
 		file: 'dist/index.js',
 		format: 'es',
-		sourcemap: true,
 	},
 	plugins: [
-		typescript({ tsconfig: './tsconfig.json' }),
+		typescript({ tsconfig: './tsconfig.json', sourceMap: false }),
 		nodeResolve({ preferBuiltins: true }),
 		// also convert require() inside try blocks, as it does not exist in ESM
 		commonjs({ ignoreTryCatch: false }),

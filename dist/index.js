@@ -35615,7 +35615,7 @@ async function runAllBenchmarks(context) {
     const results = new ResultMap();
     info(`Running benchmarks for ${context.currentBranch}:`);
     await runBenchmarks(context, results, 'head', context.currentBranch);
-    info('Fetching main branch...');
+    info(`Fetching ${context.baseBranch} branch...`);
     await executeCommand(`git fetch origin ${context.baseBranch}`);
     // a build can change tracked files, such as pubspec.lock, which would block this
     // force only on GitHub, as it would discard your changes on a local run
@@ -35757,7 +35757,7 @@ async function buildRunContext() {
         throw new Error('No pull request found in the event payload.');
     }
     // get tags and see if there is `ignore-benchmarks` tag
-    if (ignoreTag !== undefined) {
+    if (ignoreTag) {
         const labels = pullRequest.labels;
         const tags = labels.map(label => label.name);
         if (tags.includes(ignoreTag)) {
@@ -35783,4 +35783,3 @@ async function buildRunContext() {
 
 // eslint-disable-next-line @typescript-eslint/no-floating-promises
 run();
-//# sourceMappingURL=index.js.map
