@@ -41,11 +41,10 @@ you have and the number of performance tests associated with them.
 
 ## Local Setup
 
-To build, lint, and run tests locally, run:
+To build, lint, and test locally, run:
 
 ```bash
-  npm install
-  npm run all
+  script/check.sh # --fix to fix
 ```
 
 ## Running Locally
