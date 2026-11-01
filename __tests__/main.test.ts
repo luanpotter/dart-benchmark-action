@@ -1,3 +1,6 @@
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { jest } from '@jest/globals';
 import type { ExecOptions } from '@actions/exec';
 
@@ -6,12 +9,17 @@ const getBooleanInput = jest.fn<(name: string) => boolean>();
 const info = jest.fn<(message: string) => void>();
 const error = jest.fn<(message: string) => void>();
 const setFailed = jest.fn<(message: string) => void>();
+const summary = {
+	addRaw: jest.fn<(text: string) => unknown>(),
+	write: jest.fn<() => Promise<unknown>>(),
+};
 jest.unstable_mockModule('@actions/core', () => ({
 	getInput,
 	getBooleanInput,
 	info,
 	error,
 	setFailed,
+	summary,
 }));
 
 const mockExec =
@@ -30,9 +38,17 @@ jest.unstable_mockModule('@actions/github', () => ({ getOctokit, context }));
 
 const { run } = await import('../src/main.js');
 
-describe('run', () => {
-	beforeEach(() => {
+describe('running on pull_request', () => {
+	let directory: string;
+	let resultsPath: string;
+
+	beforeEach(async () => {
 		jest.resetAllMocks();
+		summary.addRaw.mockReturnValue(summary);
+		delete process.env.GITHUB_TOKEN;
+
+		directory = await mkdtemp(join(tmpdir(), 'dart-benchmark-action-'));
+		resultsPath = join(directory, 'nested', 'results.json');
 
 		context.eventName = 'pull_request';
 		context.payload = {
@@ -43,8 +59,10 @@ describe('run', () => {
 				labels: [{ name: 'ignore-benchmarks' }],
 			},
 		};
+	});
 
-		process.env.GITHUB_TOKEN = 'fake-token';
+	afterEach(async () => {
+		await rm(directory, { recursive: true });
 	});
 
 	it('should fetch inputs and execute benchmarks on both branches', async () => {
@@ -55,7 +73,6 @@ describe('run', () => {
 			'feature-branch/p1': 'Template(RunTime): 100.456 us.',
 			'feature-branch/p2': 'Template(RunTime): 200.123 us.',
 		});
-		const { listComments, createComment } = mockOctokit();
 
 		await run();
 
@@ -71,17 +88,8 @@ describe('run', () => {
 		expectExec('(cd packages/p1 ; dart run benchmark/main.dart)');
 		expectExec('(cd packages/p2 ; dart run benchmark/main.dart)');
 
-		expect(listComments).toHaveBeenCalledWith({
-			owner: 'owner',
-			repo: 'repo',
-			issue_number: 123,
-		});
-
-		expect(createComment).toHaveBeenCalledWith({
-			owner: 'owner',
-			repo: 'repo',
-			issue_number: 123,
-			body: [
+		expect(summary.addRaw).toHaveBeenCalledWith(
+			[
 				'## Benchmark Results',
 				'',
 				'<details>',
@@ -102,7 +110,65 @@ describe('run', () => {
 				'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)._',
 				'',
 			].join('\n'),
+		);
+		expect(summary.write).toHaveBeenCalled();
+	});
+
+	it('should write the results of both branches to the file, without using GitHub', async () => {
+		mockActionInput({ paths: 'packages/p1,packages/p2' });
+		mockCommandOutputs({
+			'main/p1': 'Template(RunTime): 100.123 us.',
+			'main/p2': 'Template(RunTime): 200.456 us.',
+			'feature-branch/p1': 'Template(RunTime): 100.456 us.',
+			'feature-branch/p2': 'Template(RunTime): 200.123 us.',
 		});
+
+		await run();
+
+		expect(JSON.parse(await readFile(resultsPath, 'utf8'))).toEqual({
+			version: 1,
+			projects: [
+				{
+					name: 'p1',
+					head: { Template: 100.456 },
+					base: { Template: 100.123 },
+				},
+				{
+					name: 'p2',
+					head: { Template: 200.123 },
+					base: { Template: 200.456 },
+				},
+			],
+			headBranch: 'feature-branch',
+			baseBranch: 'main',
+		});
+		expect(getOctokit).not.toHaveBeenCalled();
+		expect(setFailed).not.toHaveBeenCalled();
+	});
+
+	it('should run nothing if the step has a token', async () => {
+		process.env.GITHUB_TOKEN = 'fake-token';
+		mockActionInput({ paths: 'packages/p1' });
+
+		await run();
+
+		expect(setFailed).toHaveBeenCalledWith(
+			'GITHUB_TOKEN must not be set, as this step runs code from the pull request.',
+		);
+		expect(mockExec).not.toHaveBeenCalled();
+	});
+
+	it('should write no file when skipped by the ignore tag', async () => {
+		mockActionInput({
+			paths: 'packages/p1',
+			ignoreTag: 'ignore-benchmarks',
+		});
+
+		await run();
+
+		await expect(readFile(resultsPath)).rejects.toThrow('ENOENT');
+		expect(mockExec).not.toHaveBeenCalled();
+		expect(setFailed).not.toHaveBeenCalled();
 	});
 
 	it('should compare both sides of a pull request from a fork, with the same branch name', async () => {
@@ -120,15 +186,11 @@ describe('run', () => {
 			'feature-branch/p1': 'Template(RunTime): 100.456 us.',
 			'main/p1': 'Template(RunTime): 100.123 us.',
 		});
-		const { createComment } = mockOctokit();
 
 		await run();
 
-		expect(createComment).toHaveBeenCalledWith({
-			owner: 'owner',
-			repo: 'repo',
-			issue_number: 123,
-			body: [
+		expect(summary.addRaw).toHaveBeenCalledWith(
+			[
 				'## Benchmark Results',
 				'',
 				'### Package <b>p1</b>:',
@@ -141,7 +203,7 @@ describe('run', () => {
 				'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)._',
 				'',
 			].join('\n'),
-		});
+		);
 	});
 
 	it('should run the build command in each project before each benchmark, on both branches', async () => {
@@ -155,7 +217,6 @@ describe('run', () => {
 			'feature-branch/p1': 'Template(RunTime): 100.456 us.',
 			'feature-branch/p2': 'Template(RunTime): 200.123 us.',
 		});
-		const { createComment } = mockOctokit();
 
 		await run();
 
@@ -172,7 +233,7 @@ describe('run', () => {
 			'(cd packages/p2 ; make codegen)',
 			'(cd packages/p2 ; dart run benchmark/main.dart)',
 		]);
-		expect(createComment).toHaveBeenCalledTimes(1);
+		expect(summary.write).toHaveBeenCalledTimes(1);
 	});
 
 	it('should report a branch with no results if its build fails, and still run the other', async () => {
@@ -184,7 +245,6 @@ describe('run', () => {
 			},
 			{ failBuildOn: 'feature-branch' },
 		);
-		const { createComment } = mockOctokit();
 
 		await run();
 
@@ -192,11 +252,8 @@ describe('run', () => {
 			'+ Failed to build packages/p1 on branch feature-branch: Build failed',
 		);
 		expect(setFailed).not.toHaveBeenCalled();
-		expect(createComment).toHaveBeenCalledWith({
-			owner: 'owner',
-			repo: 'repo',
-			issue_number: 123,
-			body: [
+		expect(summary.addRaw).toHaveBeenCalledWith(
+			[
 				'## Benchmark Results',
 				'',
 				'### Package <b>p1</b>:',
@@ -209,7 +266,7 @@ describe('run', () => {
 				'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)._',
 				'',
 			].join('\n'),
-		});
+		);
 	});
 
 	it('should use the run command in each project on both branches, over the default', async () => {
@@ -226,7 +283,6 @@ describe('run', () => {
 			'feature-branch/p2':
 				'Generated: /tmp/bench\nTemplate(RunTime): 200.123 us.',
 		});
-		const { createComment } = mockOctokit();
 
 		await run();
 
@@ -239,11 +295,8 @@ describe('run', () => {
 			'(cd packages/p1 ; dart compile exe bench.dart -o /tmp/bench && /tmp/bench)',
 			'(cd packages/p2 ; dart compile exe bench.dart -o /tmp/bench && /tmp/bench)',
 		]);
-		expect(createComment).toHaveBeenCalledWith({
-			owner: 'owner',
-			repo: 'repo',
-			issue_number: 123,
-			body: [
+		expect(summary.addRaw).toHaveBeenCalledWith(
+			[
 				'## Benchmark Results',
 				'',
 				'<details>',
@@ -264,7 +317,7 @@ describe('run', () => {
 				'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)._',
 				'',
 			].join('\n'),
-		});
+		);
 	});
 
 	it('multiple templates are supported and extra lines are ignored', async () => {
@@ -285,7 +338,6 @@ describe('run', () => {
 				'[extra lines are ignored]',
 			].join('\n'),
 		});
-		const { listComments, createComment } = mockOctokit();
 
 		await run();
 
@@ -297,17 +349,8 @@ describe('run', () => {
 		// benchmark execution
 		expectExec('(cd packages/p1 ; dart run benchmark/main.dart)');
 
-		expect(listComments).toHaveBeenCalledWith({
-			owner: 'owner',
-			repo: 'repo',
-			issue_number: 123,
-		});
-
-		expect(createComment).toHaveBeenCalledWith({
-			owner: 'owner',
-			repo: 'repo',
-			issue_number: 123,
-			body: [
+		expect(summary.addRaw).toHaveBeenCalledWith(
+			[
 				'## Benchmark Results',
 				'',
 				'### Package <b>p1</b>:',
@@ -322,7 +365,7 @@ describe('run', () => {
 				'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)._',
 				'',
 			].join('\n'),
-		});
+		);
 	});
 
 	it('should execute in flutter mode', async () => {
@@ -333,7 +376,6 @@ describe('run', () => {
 			'feature-branch/p1': 'Template(RunTime): 100.456 us.',
 			'feature-branch/p2': 'Template(RunTime): 200.123 us.',
 		});
-		const { listComments, createComment } = mockOctokit();
 
 		await run();
 
@@ -353,17 +395,8 @@ describe('run', () => {
 			'(cd packages/p2 ; flutter test benchmark/main.dart -r silent) 2>/dev/null || true',
 		);
 
-		expect(listComments).toHaveBeenCalledWith({
-			owner: 'owner',
-			repo: 'repo',
-			issue_number: 123,
-		});
-
-		expect(createComment).toHaveBeenCalledWith({
-			owner: 'owner',
-			repo: 'repo',
-			issue_number: 123,
-			body: [
+		expect(summary.addRaw).toHaveBeenCalledWith(
+			[
 				'## Benchmark Results',
 				'',
 				'<details>',
@@ -384,7 +417,7 @@ describe('run', () => {
 				'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)._',
 				'',
 			].join('\n'),
-		});
+		);
 	});
 
 	it('should handle package name resolution failure gracefully', async () => {
@@ -400,24 +433,14 @@ describe('run', () => {
 				failPackageNameResolution: true,
 			},
 		);
-		const { listComments, createComment } = mockOctokit();
 
 		await run();
 
 		expectExec('(cd packages/p1 ; dart run benchmark/main.dart)');
 		expectExec('(cd packages/p2 ; dart run benchmark/main.dart)');
 
-		expect(listComments).toHaveBeenCalledWith({
-			owner: 'owner',
-			repo: 'repo',
-			issue_number: 123,
-		});
-
-		expect(createComment).toHaveBeenCalledWith({
-			owner: 'owner',
-			repo: 'repo',
-			issue_number: 123,
-			body: [
+		expect(summary.addRaw).toHaveBeenCalledWith(
+			[
 				'## Benchmark Results',
 				'',
 				'<details>',
@@ -438,55 +461,7 @@ describe('run', () => {
 				'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)._',
 				'',
 			].join('\n'),
-		});
-	});
-
-	it('should update an existing comment if present', async () => {
-		mockActionInput({ paths: 'packages/p1,packages/p2' });
-		mockCommandOutputs({
-			'main/p1': 'Template(RunTime): 100.123 us.',
-			'main/p2': 'Template(RunTime): 200.456 us.',
-			'feature-branch/p1': 'Template(RunTime): 100.456 us.',
-			'feature-branch/p2': 'Template(RunTime): 200.123 us.',
-		});
-		const { updateComment } = mockOctokit([
-			{
-				id: 1,
-				body: '### Benchmark Results\nOld results',
-			},
-		]);
-
-		await run();
-
-		expectExec('(cd packages/p1 ; dart run benchmark/main.dart)');
-		expectExec('(cd packages/p2 ; dart run benchmark/main.dart)');
-
-		expect(updateComment).toHaveBeenCalledWith({
-			owner: 'owner',
-			repo: 'repo',
-			comment_id: 1,
-			body: [
-				'## Benchmark Results',
-				'',
-				'<details>',
-				'<summary><h3>Package <b>p1</b>: 🔴 +0.333 %</h3></summary>',
-				' * Current Branch [feature-branch]: 100.456 μs',
-				' * Base Branch [main]: 100.123 μs',
-				' * Diff: 🔴 +0.333 %',
-				'</details>',
-				'',
-				'<details>',
-				'<summary><h3>Package <b>p2</b>: 🟢 -0.166 %</h3></summary>',
-				' * Current Branch [feature-branch]: 200.123 μs',
-				' * Base Branch [main]: 200.456 μs',
-				' * Diff: 🟢 -0.166 %',
-				'</details>',
-				'',
-				'---',
-				'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)._',
-				'',
-			].join('\n'),
-		});
+		);
 	});
 
 	it('should fail if no pull request context is available', async () => {
@@ -496,12 +471,12 @@ describe('run', () => {
 		await run();
 
 		expect(setFailed).toHaveBeenCalledWith(
-			'This action only works on pull_request events.',
+			'No pull request found in the event payload.',
 		);
 		expect(mockExec).not.toHaveBeenCalled();
 	});
 
-	it.each(['pull_request_target', 'pull_request_review', 'workflow_run'])(
+	it.each(['pull_request_target', 'pull_request_review', 'push'])(
 		'should run nothing on %s, even with a pull request in the payload',
 		async eventName => {
 			mockActionInput({ paths: 'packages/p1,packages/p2' });
@@ -510,7 +485,7 @@ describe('run', () => {
 			await run();
 
 			expect(setFailed).toHaveBeenCalledWith(
-				'This action only works on pull_request events.',
+				'This action only works on pull_request and workflow_run events.',
 			);
 			expect(mockExec).not.toHaveBeenCalled();
 			expect(getOctokit).not.toHaveBeenCalled();
@@ -533,25 +508,19 @@ describe('run', () => {
 		expect(setFailed).toHaveBeenCalled();
 	});
 
-	it('should run commands in the step environment and keep the token for commenting', async () => {
+	it('should run commands in the step environment', async () => {
 		mockActionInput({ paths: 'packages/p1' });
 		mockCommandOutputs({
 			'main/p1': 'Template(RunTime): 100.123 us.',
 			'feature-branch/p1': 'Template(RunTime): 100.456 us.',
 		});
-		const { createComment } = mockOctokit();
 
 		await run();
 
-		const commandEnv = { ...process.env };
-		delete commandEnv.GITHUB_TOKEN;
 		// name extraction, head benchmark, git fetch, git checkout, base benchmark
 		expect(mockExec.mock.calls.map(([, , options]) => options.env)).toEqual(
-			Array(5).fill(commandEnv),
+			Array(5).fill({ ...process.env }),
 		);
-
-		expect(getOctokit).toHaveBeenCalledWith('fake-token');
-		expect(createComment).toHaveBeenCalled();
 	});
 
 	function mockActionInput({
@@ -570,39 +539,25 @@ describe('run', () => {
 		getInput.mockImplementation(arg => {
 			if (arg === 'paths') {
 				return paths;
-			} else if (arg === 'ignore-tag') {
+			} else if (arg === 'ignore_tag') {
 				return ignoreTag;
-			} else if (arg === 'build-command') {
+			} else if (arg === 'build_command') {
 				return buildCommand;
-			} else if (arg === 'run-command') {
+			} else if (arg === 'run_command') {
 				return runCommand;
+			} else if (arg === 'results_path') {
+				return resultsPath;
 			} else {
 				throw new Error(`Unexpected input: ${arg}`);
 			}
 		});
 		getBooleanInput.mockImplementation(arg => {
-			if (arg === 'is-flutter') {
+			if (arg === 'is_flutter') {
 				return isFlutter;
 			} else {
 				throw new Error(`Unexpected input: ${arg}`);
 			}
 		});
-	}
-
-	function mockOctokit(existingComments: { id: number; body: string }[] = []): {
-		listComments: jest.Mock<(params: object) => Promise<unknown>>;
-		createComment: jest.Mock<(params: object) => Promise<unknown>>;
-		updateComment: jest.Mock<(params: object) => Promise<unknown>>;
-	} {
-		const listComments = jest
-			.fn<(params: object) => Promise<unknown>>()
-			.mockResolvedValue({ data: existingComments });
-		const createComment = jest.fn<(params: object) => Promise<unknown>>();
-		const updateComment = jest.fn<(params: object) => Promise<unknown>>();
-		getOctokit.mockReturnValue({
-			rest: { issues: { listComments, createComment, updateComment } },
-		});
-		return { listComments, createComment, updateComment };
 	}
 
 	function mockCommandOutputs(

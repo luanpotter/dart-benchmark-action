@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Runs the format check, lint and tests. This is much faster than Super-linter,
-# which CI also runs, but it covers less.
+# Runs the format check, lint, typecheck and tests. This is much faster than
+# Super-linter, which CI also runs, but it covers less.
 #
 # With --fix, it also fixes what it can, and rebuilds dist/ and the coverage
 # badge. Use this before pushing any change to src/, as CI fails on a stale dist/.
@@ -33,6 +33,8 @@ fi
 if [ "$fix" = true ]; then
 	npm run format:write
 	npm run lint -- --fix
+	npm run biome
+	npm run typecheck
 	npm run test
 	npm run coverage
 	npm run package

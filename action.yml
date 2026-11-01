@@ -7,16 +7,13 @@ branding:
   icon: 'watch'
   color: 'blue'
 
-runs:
-  using: node24
-  main: dist/index.js
-
 inputs:
   paths:
     description:
       'Comma-separated list of paths to directories of Dart projects containing
       benchmarks to run.'
-    required: true
+    required: false
+    default: '.'
   ignore-tag:
     description:
       'A configurable tag you can add to PRs so benchmarks are not run.'
@@ -37,3 +34,71 @@ inputs:
       default for Dart or Flutter, which also overrides is-flutter. It must
       print lines such as "Name(RunTime): 1.23 us." to stdout.'
     required: false
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout
+      if: github.event_name == 'pull_request'
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+
+    - name: Setup Dart
+      if: github.event_name == 'pull_request' && inputs.is-flutter != 'true'
+      uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+
+    - name: Setup Flutter
+      if: github.event_name == 'pull_request' && inputs.is-flutter == 'true'
+      uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+
+    - name: Setup Node.js
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: '24'
+        package-manager-cache: false
+
+    # Anything but workflow_run. The action fails on all other events, and this
+    # step never gets a token, as it runs code from the pull request.
+    - name: Run Benchmarks
+      if: github.event_name != 'workflow_run'
+      shell: bash
+      run: node "$GITHUB_ACTION_PATH/dist/index.js"
+      env:
+        INPUT_PATHS: ${{ inputs.paths }}
+        INPUT_IGNORE_TAG: ${{ inputs.ignore-tag }}
+        INPUT_IS_FLUTTER: ${{ inputs.is-flutter }}
+        INPUT_BUILD_COMMAND: ${{ inputs.build-command }}
+        INPUT_RUN_COMMAND: ${{ inputs.run-command }}
+        INPUT_RESULTS_PATH:
+          ${{ runner.temp }}/dart-benchmark-action/results.json
+
+    - name: Upload Results
+      if: github.event_name == 'pull_request'
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: dart-benchmark-results
+        path: ${{ runner.temp }}/dart-benchmark-action/results.json
+        if-no-files-found: ignore
+
+    # A run skipped by ignore-tag has no results, which the report handles.
+    - name: Download Results
+      if: github.event_name == 'workflow_run'
+      continue-on-error: true
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        name: dart-benchmark-results
+        path: ${{ runner.temp }}/dart-benchmark-action
+        run-id: ${{ github.event.workflow_run.id }}
+        github-token: ${{ github.token }}
+
+    # Runs no code from the pull request, so this is the only step with a token.
+    - name: Report Results
+      if: github.event_name == 'workflow_run'
+      shell: bash
+      run: node "$GITHUB_ACTION_PATH/dist/index.js"
+      env:
+        INPUT_GITHUB_TOKEN: ${{ github.token }}
+        INPUT_RESULTS_PATH:
+          ${{ runner.temp }}/dart-benchmark-action/results.json

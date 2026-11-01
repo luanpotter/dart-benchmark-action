@@ -2,7 +2,7 @@ import * as os from 'os';
 import os__default, { EOL } from 'os';
 import 'crypto';
 import * as fs from 'fs';
-import { promises, existsSync, readFileSync } from 'fs';
+import { promises, constants as constants$5, existsSync, readFileSync } from 'fs';
 import * as path from 'path';
 import http from 'http';
 import https from 'https';
@@ -35,6 +35,8 @@ import require$$1$5 from 'node:dns';
 import require$$5$3 from 'string_decoder';
 import * as child from 'child_process';
 import { setTimeout as setTimeout$1 } from 'timers';
+import { mkdir as mkdir$1, writeFile as writeFile$1, readFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 
 // We use any as a valid input type
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -28609,7 +28611,7 @@ var MediaTypes;
     });
 };
 
-(undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
+var __awaiter$5 = (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
         function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
@@ -28619,6 +28621,268 @@ var MediaTypes;
     });
 };
 const { access, appendFile, writeFile } = promises;
+const SUMMARY_ENV_VAR = 'GITHUB_STEP_SUMMARY';
+class Summary {
+    constructor() {
+        this._buffer = '';
+    }
+    /**
+     * Finds the summary file path from the environment, rejects if env var is not found or file does not exist
+     * Also checks r/w permissions.
+     *
+     * @returns step summary file path
+     */
+    filePath() {
+        return __awaiter$5(this, void 0, void 0, function* () {
+            if (this._filePath) {
+                return this._filePath;
+            }
+            const pathFromEnv = process.env[SUMMARY_ENV_VAR];
+            if (!pathFromEnv) {
+                throw new Error(`Unable to find environment variable for $${SUMMARY_ENV_VAR}. Check if your runtime environment supports job summaries.`);
+            }
+            try {
+                yield access(pathFromEnv, constants$5.R_OK | constants$5.W_OK);
+            }
+            catch (_a) {
+                throw new Error(`Unable to access summary file: '${pathFromEnv}'. Check if the file has correct read/write permissions.`);
+            }
+            this._filePath = pathFromEnv;
+            return this._filePath;
+        });
+    }
+    /**
+     * Wraps content in an HTML tag, adding any HTML attributes
+     *
+     * @param {string} tag HTML tag to wrap
+     * @param {string | null} content content within the tag
+     * @param {[attribute: string]: string} attrs key-value list of HTML attributes to add
+     *
+     * @returns {string} content wrapped in HTML element
+     */
+    wrap(tag, content, attrs = {}) {
+        const htmlAttrs = Object.entries(attrs)
+            .map(([key, value]) => ` ${key}="${value}"`)
+            .join('');
+        if (!content) {
+            return `<${tag}${htmlAttrs}>`;
+        }
+        return `<${tag}${htmlAttrs}>${content}</${tag}>`;
+    }
+    /**
+     * Writes text in the buffer to the summary buffer file and empties buffer. Will append by default.
+     *
+     * @param {SummaryWriteOptions} [options] (optional) options for write operation
+     *
+     * @returns {Promise<Summary>} summary instance
+     */
+    write(options) {
+        return __awaiter$5(this, void 0, void 0, function* () {
+            const overwrite = !!(options === null || options === void 0 ? void 0 : options.overwrite);
+            const filePath = yield this.filePath();
+            const writeFunc = overwrite ? writeFile : appendFile;
+            yield writeFunc(filePath, this._buffer, { encoding: 'utf8' });
+            return this.emptyBuffer();
+        });
+    }
+    /**
+     * Clears the summary buffer and wipes the summary file
+     *
+     * @returns {Summary} summary instance
+     */
+    clear() {
+        return __awaiter$5(this, void 0, void 0, function* () {
+            return this.emptyBuffer().write({ overwrite: true });
+        });
+    }
+    /**
+     * Returns the current summary buffer as a string
+     *
+     * @returns {string} string of summary buffer
+     */
+    stringify() {
+        return this._buffer;
+    }
+    /**
+     * If the summary buffer is empty
+     *
+     * @returns {boolen} true if the buffer is empty
+     */
+    isEmptyBuffer() {
+        return this._buffer.length === 0;
+    }
+    /**
+     * Resets the summary buffer without writing to summary file
+     *
+     * @returns {Summary} summary instance
+     */
+    emptyBuffer() {
+        this._buffer = '';
+        return this;
+    }
+    /**
+     * Adds raw text to the summary buffer
+     *
+     * @param {string} text content to add
+     * @param {boolean} [addEOL=false] (optional) append an EOL to the raw text (default: false)
+     *
+     * @returns {Summary} summary instance
+     */
+    addRaw(text, addEOL = false) {
+        this._buffer += text;
+        return addEOL ? this.addEOL() : this;
+    }
+    /**
+     * Adds the operating system-specific end-of-line marker to the buffer
+     *
+     * @returns {Summary} summary instance
+     */
+    addEOL() {
+        return this.addRaw(EOL);
+    }
+    /**
+     * Adds an HTML codeblock to the summary buffer
+     *
+     * @param {string} code content to render within fenced code block
+     * @param {string} lang (optional) language to syntax highlight code
+     *
+     * @returns {Summary} summary instance
+     */
+    addCodeBlock(code, lang) {
+        const attrs = Object.assign({}, (lang && { lang }));
+        const element = this.wrap('pre', this.wrap('code', code), attrs);
+        return this.addRaw(element).addEOL();
+    }
+    /**
+     * Adds an HTML list to the summary buffer
+     *
+     * @param {string[]} items list of items to render
+     * @param {boolean} [ordered=false] (optional) if the rendered list should be ordered or not (default: false)
+     *
+     * @returns {Summary} summary instance
+     */
+    addList(items, ordered = false) {
+        const tag = ordered ? 'ol' : 'ul';
+        const listItems = items.map(item => this.wrap('li', item)).join('');
+        const element = this.wrap(tag, listItems);
+        return this.addRaw(element).addEOL();
+    }
+    /**
+     * Adds an HTML table to the summary buffer
+     *
+     * @param {SummaryTableCell[]} rows table rows
+     *
+     * @returns {Summary} summary instance
+     */
+    addTable(rows) {
+        const tableBody = rows
+            .map(row => {
+            const cells = row
+                .map(cell => {
+                if (typeof cell === 'string') {
+                    return this.wrap('td', cell);
+                }
+                const { header, data, colspan, rowspan } = cell;
+                const tag = header ? 'th' : 'td';
+                const attrs = Object.assign(Object.assign({}, (colspan && { colspan })), (rowspan && { rowspan }));
+                return this.wrap(tag, data, attrs);
+            })
+                .join('');
+            return this.wrap('tr', cells);
+        })
+            .join('');
+        const element = this.wrap('table', tableBody);
+        return this.addRaw(element).addEOL();
+    }
+    /**
+     * Adds a collapsable HTML details element to the summary buffer
+     *
+     * @param {string} label text for the closed state
+     * @param {string} content collapsable content
+     *
+     * @returns {Summary} summary instance
+     */
+    addDetails(label, content) {
+        const element = this.wrap('details', this.wrap('summary', label) + content);
+        return this.addRaw(element).addEOL();
+    }
+    /**
+     * Adds an HTML image tag to the summary buffer
+     *
+     * @param {string} src path to the image you to embed
+     * @param {string} alt text description of the image
+     * @param {SummaryImageOptions} options (optional) addition image attributes
+     *
+     * @returns {Summary} summary instance
+     */
+    addImage(src, alt, options) {
+        const { width, height } = options || {};
+        const attrs = Object.assign(Object.assign({}, (width && { width })), (height && { height }));
+        const element = this.wrap('img', null, Object.assign({ src, alt }, attrs));
+        return this.addRaw(element).addEOL();
+    }
+    /**
+     * Adds an HTML section heading element
+     *
+     * @param {string} text heading text
+     * @param {number | string} [level=1] (optional) the heading level, default: 1
+     *
+     * @returns {Summary} summary instance
+     */
+    addHeading(text, level) {
+        const tag = `h${level}`;
+        const allowedTag = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)
+            ? tag
+            : 'h1';
+        const element = this.wrap(allowedTag, text);
+        return this.addRaw(element).addEOL();
+    }
+    /**
+     * Adds an HTML thematic break (<hr>) to the summary buffer
+     *
+     * @returns {Summary} summary instance
+     */
+    addSeparator() {
+        const element = this.wrap('hr', null);
+        return this.addRaw(element).addEOL();
+    }
+    /**
+     * Adds an HTML line break (<br>) to the summary buffer
+     *
+     * @returns {Summary} summary instance
+     */
+    addBreak() {
+        const element = this.wrap('br', null);
+        return this.addRaw(element).addEOL();
+    }
+    /**
+     * Adds an HTML blockquote to the summary buffer
+     *
+     * @param {string} text quote text
+     * @param {string} cite (optional) citation url
+     *
+     * @returns {Summary} summary instance
+     */
+    addQuote(text, cite) {
+        const attrs = Object.assign({}, (cite && { cite }));
+        const element = this.wrap('blockquote', text, attrs);
+        return this.addRaw(element).addEOL();
+    }
+    /**
+     * Adds an HTML anchor tag to the summary buffer
+     *
+     * @param {string} text link text/content
+     * @param {string} href hyperlink
+     *
+     * @returns {Summary} summary instance
+     */
+    addLink(text, href) {
+        const element = this.wrap('a', text, { href });
+        return this.addRaw(element).addEOL();
+    }
+}
+const _summary = new Summary();
+const summary = _summary;
 
 var __awaiter$4 = (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
@@ -34935,6 +35199,16 @@ class Project {
     }
 }
 
+function logError(error$1, message) {
+    if (error$1 instanceof Error) {
+        error(`+ ${message}: ${error$1.message}`);
+    }
+    else {
+        // we cannot log an "unknown" error because typescript...
+        error(`+ ${message}: [CATASTROPHIC ERROR]`);
+    }
+}
+
 class CommentFormatter {
     projects;
     currentBranch;
@@ -35062,16 +35336,6 @@ class CommentFormatter {
     }
 }
 
-function logError(error$1, message) {
-    if (error$1 instanceof Error) {
-        error(`+ ${message}: ${error$1.message}`);
-    }
-    else {
-        // we cannot log an "unknown" error because typescript...
-        error(`+ ${message}: [CATASTROPHIC ERROR]`);
-    }
-}
-
 class BenchmarkResults {
     // In the format: benchmark name to microseconds
     // (the benchmark_harness package always outputs in "us" (μs)
@@ -35161,6 +35425,11 @@ class ResultMap {
     }
 }
 
+const maxFileLength = 1_000_000;
+const maxProjects = 50;
+const maxBenchmarks = 500;
+const maxNameLength = 100;
+const reservedNames = new Set(['__proto__', 'constructor', 'prototype']);
 function toResultsFile(projects, headBranch, baseBranch, results) {
     return {
         version: 1,
@@ -35173,7 +35442,11 @@ function toResultsFile(projects, headBranch, baseBranch, results) {
         baseBranch,
     };
 }
-function fromResultsFile(file) {
+async function writeResultsFile(path, file) {
+    await mkdir$1(dirname(path), { recursive: true });
+    await writeFile$1(path, `${JSON.stringify(file, null, 2)}\n`);
+}
+function formatResultsFile(file) {
     const results = new ResultMap();
     const projects = file.projects.map(({ name, head, base }) => {
         const project = new Project(name, name);
@@ -35181,42 +35454,157 @@ function fromResultsFile(file) {
         results.set(project, 'base', BenchmarkResults.fromScores(base));
         return project;
     });
-    return { projects, results };
+    return new CommentFormatter(projects, file.headBranch, file.baseBranch, results).format();
+}
+// Reads a file written by code from the PR, which is free to write anything. What
+// comes out only has safe names and finite numbers, and is within the limits.
+function parseResultsFile(contents) {
+    if (contents.length > maxFileLength) {
+        throw new Error('Invalid results file: too large.');
+    }
+    const file = JSON.parse(contents);
+    if (!isRecord(file) || file.version !== 1 || !Array.isArray(file.projects)) {
+        throw new Error('Invalid results file: unexpected shape.');
+    }
+    if (file.projects.length > maxProjects) {
+        throw new Error('Invalid results file: too many projects.');
+    }
+    const projects = file.projects.map((project) => {
+        if (!isRecord(project)) {
+            throw new Error('Invalid results file: unexpected project.');
+        }
+        return {
+            name: parseName(project.name),
+            head: parseScores(project.head),
+            base: parseScores(project.base),
+        };
+    });
+    const benchmarks = projects.reduce((total, { head, base }) => total + Object.keys(head).length + Object.keys(base).length, 0);
+    if (benchmarks > maxBenchmarks) {
+        throw new Error('Invalid results file: too many benchmarks.');
+    }
+    return {
+        version: 1,
+        projects,
+        // not part of what the PR gets to decide; the reporter sets these from GitHub
+        headBranch: '',
+        baseBranch: '',
+    };
+}
+// Only keeps characters that cannot form markdown, links, HTML or mentions.
+function sanitizeName(name) {
+    return name.replace(/[^\p{L}\p{N} ._/()-]/gu, '_').replace(/www\./gi, 'www_');
+}
+function parseName(name) {
+    if (typeof name !== 'string' ||
+        name.length === 0 ||
+        name.length > maxNameLength ||
+        reservedNames.has(name)) {
+        throw new Error('Invalid results file: unexpected name.');
+    }
+    return sanitizeName(name);
+}
+function parseScores(scores) {
+    if (!isRecord(scores)) {
+        throw new Error('Invalid results file: unexpected scores.');
+    }
+    return Object.fromEntries(Object.entries(scores).map(([name, score]) => {
+        if (typeof score !== 'number' || !Number.isFinite(score) || score < 0) {
+            throw new Error('Invalid results file: unexpected score.');
+        }
+        return [parseName(name), score];
+    }));
+}
+function isRecord(value) {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-async function reportResults(context, resultsFile) {
-    info(`Compiling results into comment body:`);
-    const { projects, results } = fromResultsFile(resultsFile);
-    const commentFormatter = new CommentFormatter(projects, resultsFile.headBranch, resultsFile.baseBranch, results);
-    const commentBody = commentFormatter.format();
-    info(`Creating or updating comment on GitHub:`);
+const commentMarker = '<!-- dart-benchmark-action -->';
+const commentAuthor = 'github-actions[bot]';
+// This holds a token that can write to the repository, and reads a file written
+// by code from the PR. So it must never run anything, which is why this module
+// does not import @actions/exec, and it must treat that file as hostile.
+async function reportWorkflowRun() {
+    const workflowRun = context.payload.workflow_run;
+    if (workflowRun.event !== 'pull_request' ||
+        workflowRun.conclusion !== 'success') {
+        info(`Nothing to report for a ${workflowRun.event} run that ended in ${workflowRun.conclusion}.`);
+        return;
+    }
+    const resultsPath = getInput('results_path', { required: true });
+    const contents = await readIfPresent(resultsPath);
+    if (contents === undefined) {
+        info('Nothing to report, as the run has no results.');
+        return;
+    }
+    const resultsFile = parseResultsFile(contents);
     try {
-        await createOrUpdateComment(context, commentBody);
+        const octokit = getOctokit(getInput('github_token', { required: true }));
+        const pullRequest = await findPullRequest(octokit, workflowRun);
+        if (!pullRequest) {
+            info('Nothing to report, as no open pull request matches the run.');
+            return;
+        }
+        // the branch names in the file come from the PR, so use the ones from GitHub
+        const body = formatResultsFile({
+            ...resultsFile,
+            headBranch: sanitizeName(pullRequest.head.ref),
+            baseBranch: sanitizeName(pullRequest.base.ref),
+        });
+        info(`Creating or updating comment on #${pullRequest.number}:`);
+        await createOrUpdateComment(octokit, pullRequest.number, `${commentMarker}\n${body}`);
     }
     catch (error) {
         logError(error, 'Failed to create or update comment on GitHub.');
         // do not set the status to failed; this is not the PR's fault!
     }
 }
-async function createOrUpdateComment(context, commentBody) {
-    const octokit = getOctokit(context.githubToken);
-    const comments = await octokit.rest.issues.listComments({
-        ...context.repository,
-        issue_number: context.prNumber,
+async function readIfPresent(path) {
+    try {
+        return await readFile(path, 'utf8');
+    }
+    catch (error) {
+        if (error.code === 'ENOENT') {
+            return undefined;
+        }
+        throw error;
+    }
+}
+// `workflow_run.pull_requests` is empty for forks, so look it up. The number must
+// come from GitHub and not the results file, or a PR could comment on any other.
+async function findPullRequest(octokit, workflowRun) {
+    const owner = workflowRun.head_repository?.owner.login;
+    if (!owner || !workflowRun.head_branch) {
+        return undefined;
+    }
+    const pullRequests = await octokit.rest.pulls.list({
+        ...context.repo,
+        state: 'open',
+        head: `${owner}:${workflowRun.head_branch}`,
     });
-    const existingComment = comments.data.find(comment => comment.body?.includes('## Benchmark Results'));
+    return pullRequests.data.find(pullRequest => pullRequest.head.sha === workflowRun.head_sha);
+}
+async function createOrUpdateComment(octokit, prNumber, body) {
+    const comments = await octokit.paginate(octokit.rest.issues.listComments, {
+        ...context.repo,
+        issue_number: prNumber,
+        per_page: 100,
+    });
+    // anyone can write the marker, so also check who wrote the comment
+    const existingComment = comments.find(comment => comment.user?.login === commentAuthor &&
+        comment.body?.startsWith(commentMarker));
     if (existingComment) {
         await octokit.rest.issues.updateComment({
-            ...context.repository,
+            ...context.repo,
             comment_id: existingComment.id,
-            body: commentBody,
+            body,
         });
     }
     else {
         await octokit.rest.issues.createComment({
-            ...context.repository,
-            issue_number: context.prNumber,
-            body: commentBody,
+            ...context.repo,
+            issue_number: prNumber,
+            body,
         });
     }
 }
@@ -35282,7 +35670,7 @@ async function runBenchmark(results, buildCommand, command, project, side, branc
 async function extractProjectName(path) {
     try {
         const output = await executeCommand(`(cd ${path} ; cat pubspec.yaml | grep "^name:"| perl -pe 's/^name: (.*)$/$1/')`);
-        return output.trim();
+        return output.trim() || undefined;
     }
     catch (error) {
         logError(error, `Failed to extract project name for ${path}`);
@@ -35317,37 +35705,52 @@ function buildCommandEnv() {
 
 async function run() {
     try {
-        info('Collecting information to run benchmarks:');
-        const context = await buildContext();
-        if (!context) {
-            return;
+        const { eventName } = context;
+        if (eventName === 'pull_request') {
+            await runOnPullRequest();
         }
-        const results = await runAllBenchmarks(context);
-        await reportResults(context, toResultsFile(context.projects, context.currentBranch, context.baseBranch, results));
+        else if (eventName === 'workflow_run') {
+            await reportWorkflowRun();
+        }
+        else {
+            // other events, especially pull_request_target, can carry an untrusted PR,
+            // but would run its code with a token that can write to the repository
+            throw new Error('This action only works on pull_request and workflow_run events.');
+        }
     }
     catch (error) {
         if (error instanceof Error)
             setFailed(error.message);
     }
 }
-async function buildContext() {
-    const isFlutter = getBooleanInput('is-flutter', { required: true });
-    const ignoreTag = getInput('ignore-tag', { required: false });
-    const buildCommand = getInput('build-command', { required: false }) || undefined;
-    const runCommand = getInput('run-command', { required: false }) || undefined;
+// Runs code from the PR, so it refuses to even be given a token to expose.
+async function runOnPullRequest() {
+    if (process.env.GITHUB_TOKEN) {
+        throw new Error('GITHUB_TOKEN must not be set, as this step runs code from the pull request.');
+    }
+    const resultsPath = getInput('results_path', { required: true });
+    const context = await buildRunContext();
+    if (!context) {
+        return;
+    }
+    const results = await runAllBenchmarks(context);
+    const resultsFile = toResultsFile(context.projects, context.currentBranch, context.baseBranch, results);
+    info(`Writing results to ${resultsPath}:`);
+    await writeResultsFile(resultsPath, resultsFile);
+    await summary.addRaw(formatResultsFile(resultsFile)).write();
+}
+async function buildRunContext() {
+    info('Collecting information to run benchmarks:');
+    const isFlutter = getBooleanInput('is_flutter', { required: true });
+    const ignoreTag = getInput('ignore_tag', { required: false });
+    const buildCommand = getInput('build_command', { required: false }) || undefined;
+    const runCommand = getInput('run_command', { required: false }) || undefined;
     const projectPaths = getInput('paths', { required: true })
         .split(',')
         .map(path => path.trim());
-    const githubToken = process.env.GITHUB_TOKEN;
-    if (!githubToken) {
-        throw new Error('GITHUB_TOKEN environment variable is required.');
-    }
-    const context$1 = context;
-    const pullRequest = context$1.payload.pull_request;
-    // other events, especially pull_request_target, can carry an untrusted PR,
-    // but would run its code with a token that can write to the repository
-    if (context$1.eventName !== 'pull_request' || !pullRequest) {
-        throw new Error('This action only works on pull_request events.');
+    const pullRequest = context.payload.pull_request;
+    if (!pullRequest) {
+        throw new Error('No pull request found in the event payload.');
     }
     // get tags and see if there is `ignore-benchmarks` tag
     if (ignoreTag !== undefined) {
@@ -35358,7 +35761,6 @@ async function buildContext() {
             return undefined;
         }
     }
-    const prNumber = pullRequest.number;
     // we need unsafe member access because typescript...
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const currentBranch = pullRequest.head.ref;
@@ -35366,12 +35768,6 @@ async function buildContext() {
     const baseBranch = pullRequest.base.ref;
     const projects = await Promise.all(projectPaths.map(async (path) => new Project(path, await extractProjectName(path))));
     return {
-        githubToken,
-        repository: {
-            owner: context$1.repo.owner,
-            repo: context$1.repo.repo,
-        },
-        prNumber,
         isFlutter,
         buildCommand,
         runCommand,

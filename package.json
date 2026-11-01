@@ -27,7 +27,9 @@
 	},
 	"scripts": {
 		"bundle": "npm run format:write && npm run package",
-		"check": "npm run format:check && npm run lint && npm run test",
+		"check": "npm run format:check && npm run lint && npm run biome && npm run typecheck && npm run test",
+		"biome": "npx biome format --error-on-warnings --no-errors-on-unmatched && npx biome lint --error-on-warnings --no-errors-on-unmatched",
+		"typecheck": "npx tsc --noEmit",
 		"ci-test": "NODE_OPTIONS=--experimental-vm-modules npx jest",
 		"coverage": "npx make-coverage-badge --output-path ./badges/coverage.svg",
 		"format:write": "npx prettier --write .",
@@ -88,6 +90,7 @@
 		"@actions/github": "^9.1.1"
 	},
 	"devDependencies": {
+		"@biomejs/biome": "2.5.14",
 		"@eslint/js": "^10.0.1",
 		"@github/local-action": "^7.0.1",
 		"@jest/globals": "^30.5.2",
