@@ -35191,7 +35191,7 @@ async function createOrUpdateComment(context, commentBody) {
         ...context.repository,
         issue_number: context.prNumber,
     });
-    const existingComment = comments.data.find(comment => comment.body && comment.body.includes('## Benchmark Results'));
+    const existingComment = comments.data.find(comment => comment.body?.includes('## Benchmark Results'));
     if (existingComment) {
         await octokit.rest.issues.updateComment({
             ...context.repository,

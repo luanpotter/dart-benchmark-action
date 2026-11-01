@@ -1,5 +1,5 @@
 import * as core from '@actions/core';
-import { Project } from './action_context.js';
+import type { Project } from './action_context.js';
 
 export type BenchmarkDiff = {
 	benchmark: string;

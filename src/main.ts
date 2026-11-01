@@ -2,7 +2,7 @@ import * as core from '@actions/core';
 import * as github from '@actions/github';
 import { exec } from '@actions/exec';
 import { BenchmarkResults, ResultMap } from './result_map.js';
-import { ActionContext, Project } from './action_context.js';
+import { type ActionContext, Project } from './action_context.js';
 import { CommentFormatter } from './comment_formatter.js';
 
 export async function run(): Promise<void> {
@@ -57,8 +57,8 @@ async function createOrUpdateComment(
 		issue_number: context.prNumber,
 	});
 
-	const existingComment = comments.data.find(
-		comment => comment.body && comment.body.includes('## Benchmark Results'),
+	const existingComment = comments.data.find(comment =>
+		comment.body?.includes('## Benchmark Results'),
 	);
 
 	if (existingComment) {

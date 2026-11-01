@@ -1,5 +1,5 @@
-import { Project } from './action_context.js';
-import { BenchmarkDiff, ResultMap } from './result_map.js';
+import type { Project } from './action_context.js';
+import type { BenchmarkDiff, ResultMap } from './result_map.js';
 
 export class CommentFormatter {
 	private projects: Project[];
