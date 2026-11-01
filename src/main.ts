@@ -92,18 +92,38 @@ async function runBenchmarks(
 		const command = context.isFlutter
 			? `(cd ${path} ; flutter test benchmark/main.dart -r silent) 2>/dev/null || true`
 			: `(cd ${path} ; dart run benchmark/main.dart)`;
-		await runBenchmark(results, command, project, side, branch);
+		await runBenchmark(
+			results,
+			context.buildCommand,
+			command,
+			project,
+			side,
+			branch,
+		);
 	}
 }
 
 async function runBenchmark(
 	results: ResultMap,
+	buildCommand: string | undefined,
 	command: string,
 	project: Project,
 	side: Side,
 	branch: string,
 ): Promise<void> {
 	const { path } = project;
+
+	if (buildCommand) {
+		core.info(`+ Building ${path} on branch ${branch}:`);
+		try {
+			await executeCommand(`(cd ${path} ; ${buildCommand})`);
+		} catch (error) {
+			logError(error, `Failed to build ${path} on branch ${branch}`);
+			results.set(project, side, BenchmarkResults.error());
+			return;
+		}
+	}
+
 	core.info(`+ Running benchmarks for ${path} on branch ${branch}:`);
 
 	let result: BenchmarkResults;
@@ -121,6 +141,8 @@ async function runBenchmark(
 async function buildContext(): Promise<ActionContext | undefined> {
 	const isFlutter = core.getBooleanInput('is-flutter', { required: true });
 	const ignoreTag = core.getInput('ignore-tag', { required: false });
+	const buildCommand =
+		core.getInput('build-command', { required: false }) || undefined;
 
 	const projectPaths = core
 		.getInput('paths', { required: true })
@@ -172,6 +194,7 @@ async function buildContext(): Promise<ActionContext | undefined> {
 		},
 		prNumber,
 		isFlutter,
+		buildCommand,
 		projects,
 		currentBranch,
 		baseBranch,

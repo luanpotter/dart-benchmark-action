@@ -39,6 +39,23 @@ This is what the comment can look like:
 But it will use tables and toggles depending on the amount of projects/packages
 you have and the number of performance tests associated with them.
 
+## Custom Build Step
+
+If your project has any custom build step (such as build runners), configure
+this action to build it so it runs before both the base and the PR benches:
+
+```yaml
+- uses: luanpotter/dart-benchmark-action@v0.1.4
+  with:
+    paths: '<path-to-your-dart-project>,<more>'
+    build-command: dart pub get && dart run build_runner build
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+If it fails, that branch is reported as having no results, as when a benchmark
+fails.
+
 ## Local Setup
 
 To build, lint, and test locally, run:
