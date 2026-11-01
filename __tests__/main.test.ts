@@ -430,7 +430,7 @@ describe('run', () => {
 		mockExec.mockImplementation(async (_, args, execOptions) => {
 			const command = args[1];
 			const project = command.includes('p1') ? 'p1' : 'p2';
-			let response: string | undefined = undefined;
+			let response: string | undefined;
 			if (command.startsWith('git ')) {
 				isMain = true;
 			} else if (
