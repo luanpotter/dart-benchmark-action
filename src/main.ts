@@ -77,7 +77,7 @@ async function buildRunContext(): Promise<RunContext | undefined> {
 	}
 
 	// get tags and see if there is `ignore-benchmarks` tag
-	if (ignoreTag !== undefined) {
+	if (ignoreTag) {
 		const labels = pullRequest.labels as { name: string }[];
 		const tags: string[] = labels.map(label => label.name);
 		if (tags.includes(ignoreTag)) {
