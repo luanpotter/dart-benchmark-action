@@ -34921,94 +34921,6 @@ function getOctokit(token, options, ...additionalPlugins) {
     return new GitHubWithPlugins(getOctokitOptions(token));
 }
 
-class BenchmarkResults {
-    // In the format: benchmark name to microseconds
-    // (the benchmark_harness package always outputs in "us" (μs)
-    results;
-    constructor(output) {
-        if (output === undefined) {
-            this.results = {};
-        }
-        else {
-            this.results = BenchmarkResults.parseOutput(output);
-        }
-    }
-    // The output will be in the format:
-    // Iteration Benchmark(RunTime): 155.3733089882978 us.
-    // Other Benchmark(RunTime): 22.426620587035305 us.
-    static parseOutput(output) {
-        const entries = output
-            .trim()
-            .split('\n')
-            .map(line => line.trim())
-            .filter(line => line.match(/^.*\(RunTime\): .* us.$/));
-        const results = {};
-        for (const entry of entries) {
-            try {
-                const [p1, p2] = entry.split(': ');
-                const name = p1.replace(/\(RunTime\)$/, '');
-                const value = parseFloat(p2.replace(' us.', ''));
-                info(`Parsed benchmark: ${name} -> ${value}`);
-                results[name] = value;
-            }
-            catch {
-                error(`Failed to parse benchmark output: \`${output}\``);
-            }
-        }
-        return results;
-    }
-    getScore(benchmark) {
-        return this.results[benchmark];
-    }
-    benchmarks() {
-        return Object.keys(this.results);
-    }
-    static success(output) {
-        return new BenchmarkResults(output.trim());
-    }
-    static error() {
-        return new BenchmarkResults(undefined);
-    }
-    static computeDiffs(a, b) {
-        const allBenchmarks = [...new Set([...a.benchmarks(), ...b.benchmarks()])];
-        info(`Compiling diffs for benchmarks: ${allBenchmarks.join(', ')}`);
-        return allBenchmarks.map(benchmark => {
-            const scoreA = a.getScore(benchmark);
-            const scoreB = b.getScore(benchmark);
-            let diff;
-            if (scoreA === undefined || scoreB === undefined) {
-                diff = undefined;
-            }
-            else {
-                diff = ((scoreA - scoreB) / scoreB) * 100;
-            }
-            return {
-                benchmark,
-                scoreA,
-                scoreB,
-                diff,
-            };
-        });
-    }
-}
-class ResultMap {
-    results = new Map();
-    static _toKey(project, side) {
-        return `${project.identifier()}/${side}`;
-    }
-    set(project, side, value) {
-        this.results.set(ResultMap._toKey(project, side), value);
-        return this;
-    }
-    get(project, side) {
-        return (this.results.get(ResultMap._toKey(project, side)) ??
-            BenchmarkResults.error());
-    }
-    computeDiffs(project) {
-        return BenchmarkResults.computeDiffs(this.get(project, 'head'), this.get(project, 'base'));
-    }
-}
-
 class Project {
     path;
     // Script might fail to find the project name; in which case the path
@@ -35150,37 +35062,140 @@ class CommentFormatter {
     }
 }
 
-async function run() {
+function logError(error$1, message) {
+    if (error$1 instanceof Error) {
+        error(`+ ${message}: ${error$1.message}`);
+    }
+    else {
+        // we cannot log an "unknown" error because typescript...
+        error(`+ ${message}: [CATASTROPHIC ERROR]`);
+    }
+}
+
+class BenchmarkResults {
+    // In the format: benchmark name to microseconds
+    // (the benchmark_harness package always outputs in "us" (μs)
+    results;
+    constructor(results) {
+        this.results = results;
+    }
+    // The output will be in the format:
+    // Iteration Benchmark(RunTime): 155.3733089882978 us.
+    // Other Benchmark(RunTime): 22.426620587035305 us.
+    static parseOutput(output) {
+        const entries = output
+            .trim()
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line.match(/^.*\(RunTime\): .* us.$/));
+        const results = {};
+        for (const entry of entries) {
+            try {
+                const [p1, p2] = entry.split(': ');
+                const name = p1.replace(/\(RunTime\)$/, '');
+                const value = parseFloat(p2.replace(' us.', ''));
+                info(`Parsed benchmark: ${name} -> ${value}`);
+                results[name] = value;
+            }
+            catch {
+                error(`Failed to parse benchmark output: \`${output}\``);
+            }
+        }
+        return results;
+    }
+    getScore(benchmark) {
+        return this.results[benchmark];
+    }
+    benchmarks() {
+        return Object.keys(this.results);
+    }
+    scores() {
+        return { ...this.results };
+    }
+    static success(output) {
+        return new BenchmarkResults(BenchmarkResults.parseOutput(output.trim()));
+    }
+    static error() {
+        return new BenchmarkResults({});
+    }
+    static fromScores(scores) {
+        return new BenchmarkResults({ ...scores });
+    }
+    static computeDiffs(a, b) {
+        const allBenchmarks = [...new Set([...a.benchmarks(), ...b.benchmarks()])];
+        info(`Compiling diffs for benchmarks: ${allBenchmarks.join(', ')}`);
+        return allBenchmarks.map(benchmark => {
+            const scoreA = a.getScore(benchmark);
+            const scoreB = b.getScore(benchmark);
+            let diff;
+            if (scoreA === undefined || scoreB === undefined) {
+                diff = undefined;
+            }
+            else {
+                diff = ((scoreA - scoreB) / scoreB) * 100;
+            }
+            return {
+                benchmark,
+                scoreA,
+                scoreB,
+                diff,
+            };
+        });
+    }
+}
+class ResultMap {
+    results = new Map();
+    static _toKey(project, side) {
+        return `${project.identifier()}/${side}`;
+    }
+    set(project, side, value) {
+        this.results.set(ResultMap._toKey(project, side), value);
+        return this;
+    }
+    get(project, side) {
+        return (this.results.get(ResultMap._toKey(project, side)) ??
+            BenchmarkResults.error());
+    }
+    computeDiffs(project) {
+        return BenchmarkResults.computeDiffs(this.get(project, 'head'), this.get(project, 'base'));
+    }
+}
+
+function toResultsFile(projects, headBranch, baseBranch, results) {
+    return {
+        version: 1,
+        projects: projects.map(project => ({
+            name: project.identifier(),
+            head: results.get(project, 'head').scores(),
+            base: results.get(project, 'base').scores(),
+        })),
+        headBranch,
+        baseBranch,
+    };
+}
+function fromResultsFile(file) {
+    const results = new ResultMap();
+    const projects = file.projects.map(({ name, head, base }) => {
+        const project = new Project(name, name);
+        results.set(project, 'head', BenchmarkResults.fromScores(head));
+        results.set(project, 'base', BenchmarkResults.fromScores(base));
+        return project;
+    });
+    return { projects, results };
+}
+
+async function reportResults(context, resultsFile) {
+    info(`Compiling results into comment body:`);
+    const { projects, results } = fromResultsFile(resultsFile);
+    const commentFormatter = new CommentFormatter(projects, resultsFile.headBranch, resultsFile.baseBranch, results);
+    const commentBody = commentFormatter.format();
+    info(`Creating or updating comment on GitHub:`);
     try {
-        info('Collecting information to run benchmarks:');
-        const context = await buildContext();
-        if (!context) {
-            return;
-        }
-        info('Create result map:');
-        const results = new ResultMap();
-        info(`Running benchmarks for ${context.currentBranch}:`);
-        await runBenchmarks(context, results, 'head', context.currentBranch);
-        info('Fetching main branch...');
-        await executeCommand(`git fetch origin ${context.baseBranch}`);
-        await executeCommand(`git checkout ${context.baseBranch}`);
-        info(`Running benchmarks for ${context.baseBranch}:`);
-        await runBenchmarks(context, results, 'base', context.baseBranch);
-        info(`Compiling results into comment body:`);
-        const commentFormatter = new CommentFormatter(context.projects, context.currentBranch, context.baseBranch, results);
-        info(`Creating or updating comment on GitHub:`);
-        try {
-            await createOrUpdateComment(context, commentFormatter.format());
-        }
-        catch (error) {
-            logError(error, 'Failed to create or update comment on GitHub.');
-            // do not set the status to failed; this is not the PR's fault!
-            return;
-        }
+        await createOrUpdateComment(context, commentBody);
     }
     catch (error) {
-        if (error instanceof Error)
-            setFailed(error.message);
+        logError(error, 'Failed to create or update comment on GitHub.');
+        // do not set the status to failed; this is not the PR's fault!
     }
 }
 async function createOrUpdateComment(context, commentBody) {
@@ -35205,11 +35220,24 @@ async function createOrUpdateComment(context, commentBody) {
         });
     }
 }
-// for dart-mode, we can just run
-// dart run $path/benchmark/main.dart
-// but for flutter-mode, we need to hack it with flutter test
-// flutter test $path/benchmark/main.dart -r silent 2>/dev/null || true
-// sadly there does not seem to be any other way
+
+async function runAllBenchmarks(context) {
+    info('Create result map:');
+    const results = new ResultMap();
+    info(`Running benchmarks for ${context.currentBranch}:`);
+    await runBenchmarks(context, results, 'head', context.currentBranch);
+    info('Fetching main branch...');
+    await executeCommand(`git fetch origin ${context.baseBranch}`);
+    await executeCommand(`git checkout ${context.baseBranch}`);
+    info(`Running benchmarks for ${context.baseBranch}:`);
+    await runBenchmarks(context, results, 'base', context.baseBranch);
+    return results;
+}
+// For dart-mode, we can just run
+// $ dart run $path/benchmark/main.dart
+// But for flutter-mode, we need to hack it with flutter test
+// $ flutter test $path/benchmark/main.dart -r silent 2>/dev/null || true
+// Sadly, there does not seem to be any other way
 async function runBenchmarks(context, results, side, branch) {
     for (const project of context.projects) {
         const { path } = project;
@@ -35250,6 +35278,57 @@ async function runBenchmark(results, buildCommand, command, project, side, branc
         result = BenchmarkResults.error();
     }
     results.set(project, side, result);
+}
+async function extractProjectName(path) {
+    try {
+        const output = await executeCommand(`(cd ${path} ; cat pubspec.yaml | grep "^name:"| perl -pe 's/^name: (.*)$/$1/')`);
+        return output.trim();
+    }
+    catch (error) {
+        logError(error, `Failed to extract project name for ${path}`);
+        return undefined;
+    }
+}
+async function executeCommand(command) {
+    let output = '';
+    let error = '';
+    info(` + Running command: ${command}`);
+    const resultCode = await exec('/bin/bash', ['-c', command], {
+        env: buildCommandEnv(),
+        listeners: {
+            stdout: (data) => {
+                output += data.toString();
+            },
+            stderr: (data) => {
+                error += data.toString();
+            },
+        },
+    });
+    if (resultCode !== 0) {
+        throw new Error(`Command \`${command}\` failed with ${resultCode}: ${error}`);
+    }
+    return output;
+}
+// Remove the GitHub token from the context of the benchmark running from a PR
+function buildCommandEnv() {
+    const entries = Object.entries(process.env).filter((entry) => entry[0] !== 'GITHUB_TOKEN' && entry[1] !== undefined);
+    return Object.fromEntries(entries);
+}
+
+async function run() {
+    try {
+        info('Collecting information to run benchmarks:');
+        const context = await buildContext();
+        if (!context) {
+            return;
+        }
+        const results = await runAllBenchmarks(context);
+        await reportResults(context, toResultsFile(context.projects, context.currentBranch, context.baseBranch, results));
+    }
+    catch (error) {
+        if (error instanceof Error)
+            setFailed(error.message);
+    }
 }
 async function buildContext() {
     const isFlutter = getBooleanInput('is-flutter', { required: true });
@@ -35300,50 +35379,6 @@ async function buildContext() {
         currentBranch,
         baseBranch,
     };
-}
-async function extractProjectName(path) {
-    try {
-        const output = await executeCommand(`(cd ${path} ; cat pubspec.yaml | grep "^name:"| perl -pe 's/^name: (.*)$/$1/')`);
-        return output.trim();
-    }
-    catch (error) {
-        logError(error, `Failed to extract project name for ${path}`);
-        return undefined;
-    }
-}
-async function executeCommand(command) {
-    let output = '';
-    let error = '';
-    info(` + Running command: ${command}`);
-    const resultCode = await exec('/bin/bash', ['-c', command], {
-        env: buildCommandEnv(),
-        listeners: {
-            stdout: (data) => {
-                output += data.toString();
-            },
-            stderr: (data) => {
-                error += data.toString();
-            },
-        },
-    });
-    if (resultCode !== 0) {
-        throw new Error(`Command \`${command}\` failed with ${resultCode}: ${error}`);
-    }
-    return output;
-}
-// remove github token from the context of the benchmark running from a PR
-function buildCommandEnv() {
-    const entries = Object.entries(process.env).filter((entry) => entry[0] !== 'GITHUB_TOKEN' && entry[1] !== undefined);
-    return Object.fromEntries(entries);
-}
-function logError(error$1, message) {
-    if (error$1 instanceof Error) {
-        error(`+ ${message}: ${error$1.message}`);
-    }
-    else {
-        // we cannot log an "unknown" error because typescript...
-        error(`+ ${message}: [CATASTROPHIC ERROR]`);
-    }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-floating-promises
