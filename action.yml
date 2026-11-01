@@ -48,6 +48,9 @@ runs:
     - name: Setup Dart
       if: github.event_name == 'pull_request' && inputs.is-flutter != 'true'
       uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+      with:
+        # inside a composite action, it looks for its matcher file in this action
+        problem-matcher: 'false'
 
     - name: Setup Flutter
       if: github.event_name == 'pull_request' && inputs.is-flutter == 'true'
