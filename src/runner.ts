@@ -15,7 +15,10 @@ export async function runAllBenchmarks(
 
 	core.info('Fetching main branch...');
 	await executeCommand(`git fetch origin ${context.baseBranch}`);
-	await executeCommand(`git checkout ${context.baseBranch}`);
+	// a build can change tracked files, such as pubspec.lock, which would block this
+	// force only on GitHub, as it would discard your changes on a local run
+	const force = process.env.GITHUB_ACTIONS ? '--force ' : '';
+	await executeCommand(`git checkout ${force}${context.baseBranch}`);
 
 	core.info(`Running benchmarks for ${context.baseBranch}:`);
 	await runBenchmarks(context, results, 'base', context.baseBranch);

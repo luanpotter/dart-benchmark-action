@@ -49,8 +49,9 @@ export async function writeResultsFile(
 
 export function formatResultsFile(file: ResultsFile): string {
 	const results = new ResultMap();
-	const projects = file.projects.map(({ name, head, base }) => {
-		const project = new Project(name, name);
+	const projects = file.projects.map(({ name, head, base }, index) => {
+		// the file has no paths, and names can repeat, so use the position instead
+		const project = new Project(`${index}`, name);
 		results.set(project, 'head', BenchmarkResults.fromScores(head));
 		results.set(project, 'base', BenchmarkResults.fromScores(base));
 		return project;

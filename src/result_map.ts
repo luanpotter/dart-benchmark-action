@@ -100,7 +100,7 @@ export class ResultMap {
 	private results = new Map<string, BenchmarkResults>();
 
 	private static _toKey(project: Project, side: Side): string {
-		return `${project.identifier()}/${side}`;
+		return `${project.path}/${side}`;
 	}
 
 	set(project: Project, side: Side, value: BenchmarkResults): this {

@@ -85,21 +85,43 @@ fails, that branch is reported as having no results.
       dart compile exe benchmark/main.dart -o /tmp/bench && /tmp/bench
 ```
 
-For a monorepo, set up the workspace in `build-command`. Do not use a separate
-step before the action, as the action checks out your code itself, and that
-removes anything the step generated.
+## Custom Setup
+
+The action only sets up what is not already there. To use a specific SDK
+version, or to set up a monorepo, add your own steps before it on the runner. It
+keeps an existing checkout, and any `dart`, `flutter` or Node.js 24+ on the
+`PATH`.
 
 ```yaml
-- uses: luanpotter/dart-benchmark-action@v0.2.0
-  with:
-    paths: packages/flame,packages/flame_lint
-    build-command: |
+steps:
+  - uses: actions/checkout@v7
+    with:
+      persist-credentials: false
+  - uses: subosito/flutter-action@v2
+    with:
+      flutter-version: 3.24.0
+  - run: |
       dart pub global activate melos
       melos bootstrap
+  - uses: luanpotter/dart-benchmark-action@v0.2.0
+    with:
+      is-flutter: true
+      paths: packages/flame,packages/flame_lint
 ```
 
-This action does not support private repositories yet, as it cannot fetch the
-base branch without credentials.
+These steps run once, on the code of the pull request. The base branch is
+checked out afterwards, keeping anything they generated. If what they generate
+depends on the branch, also set `build-command`, or the base branch will run
+with the files of the pull request, and the results will be wrong without any
+error.
+
+Use `persist-credentials: false`, so that the token is not left in the Git
+config for the code of the pull request to read. The exception is a private
+repository, which needs the credentials to fetch the base branch.
+
+Do not give the runner write permissions. Pull requests from forks are limited
+to a read-only token anyway, but the code of any other pull request, including
+its dependencies, could use them.
 
 ## Local Setup
 

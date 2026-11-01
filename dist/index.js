@@ -35410,7 +35410,7 @@ class BenchmarkResults {
 class ResultMap {
     results = new Map();
     static _toKey(project, side) {
-        return `${project.identifier()}/${side}`;
+        return `${project.path}/${side}`;
     }
     set(project, side, value) {
         this.results.set(ResultMap._toKey(project, side), value);
@@ -35448,8 +35448,9 @@ async function writeResultsFile(path, file) {
 }
 function formatResultsFile(file) {
     const results = new ResultMap();
-    const projects = file.projects.map(({ name, head, base }) => {
-        const project = new Project(name, name);
+    const projects = file.projects.map(({ name, head, base }, index) => {
+        // the file has no paths, and names can repeat, so use the position instead
+        const project = new Project(`${index}`, name);
         results.set(project, 'head', BenchmarkResults.fromScores(head));
         results.set(project, 'base', BenchmarkResults.fromScores(base));
         return project;
@@ -35616,7 +35617,10 @@ async function runAllBenchmarks(context) {
     await runBenchmarks(context, results, 'head', context.currentBranch);
     info('Fetching main branch...');
     await executeCommand(`git fetch origin ${context.baseBranch}`);
-    await executeCommand(`git checkout ${context.baseBranch}`);
+    // a build can change tracked files, such as pubspec.lock, which would block this
+    // force only on GitHub, as it would discard your changes on a local run
+    const force = process.env.GITHUB_ACTIONS ? '--force ' : '';
+    await executeCommand(`git checkout ${force}${context.baseBranch}`);
     info(`Running benchmarks for ${context.baseBranch}:`);
     await runBenchmarks(context, results, 'base', context.baseBranch);
     return results;

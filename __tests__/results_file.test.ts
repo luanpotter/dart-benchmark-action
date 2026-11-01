@@ -62,6 +62,33 @@ describe('ResultsFile', () => {
 		);
 	});
 
+	it('keeps projects with the same name apart', () => {
+		const first = new Project('packages/a', 'same');
+		const second = new Project('packages/b', 'same');
+		const sameNames = new ResultMap();
+		sameNames.set(first, 'head', BenchmarkResults.success('T(RunTime): 1 us.'));
+		sameNames.set(first, 'base', BenchmarkResults.success('T(RunTime): 2 us.'));
+		sameNames.set(
+			second,
+			'head',
+			BenchmarkResults.success('T(RunTime): 3 us.'),
+		);
+		sameNames.set(
+			second,
+			'base',
+			BenchmarkResults.success('T(RunTime): 4 us.'),
+		);
+
+		const comment = formatResultsFile(
+			toResultsFile([first, second], 'feature', 'main', sameNames),
+		);
+
+		expect(comment).toContain('Current Branch [feature]: 1.000 μs');
+		expect(comment).toContain('Base Branch [main]: 2.000 μs');
+		expect(comment).toContain('Current Branch [feature]: 3.000 μs');
+		expect(comment).toContain('Base Branch [main]: 4.000 μs');
+	});
+
 	it('only keeps the expected fields, with safe names', () => {
 		const parsed = parseResultsFile(
 			JSON.stringify({

@@ -46,6 +46,7 @@ describe('running on pull_request', () => {
 		jest.resetAllMocks();
 		summary.addRaw.mockReturnValue(summary);
 		delete process.env.GITHUB_TOKEN;
+		delete process.env.GITHUB_ACTIONS;
 
 		directory = await mkdtemp(join(tmpdir(), 'dart-benchmark-action-'));
 		resultsPath = join(directory, 'nested', 'results.json');
@@ -234,6 +235,18 @@ describe('running on pull_request', () => {
 			'(cd packages/p2 ; dart run benchmark/main.dart)',
 		]);
 		expect(summary.write).toHaveBeenCalledTimes(1);
+	});
+
+	it('should force the checkout of the base branch on GitHub only', async () => {
+		mockActionInput({ paths: 'packages/p1' });
+		mockCommandOutputs({});
+
+		await run();
+		expectExec('git checkout main');
+
+		process.env.GITHUB_ACTIONS = 'true';
+		await run();
+		expectExec('git checkout --force main');
 	});
 
 	it('should report a branch with no results if its build fails, and still run the other', async () => {
