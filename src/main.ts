@@ -140,8 +140,6 @@ async function buildContext(): Promise<ActionContext | undefined> {
 
 	// get tags and see if there is `ignore-benchmarks` tag
 	if (ignoreTag !== undefined) {
-		// we need unsafe member access because typescript...
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
 		const labels = pullRequest.labels as { name: string }[];
 		const tags: string[] = labels.map(label => label.name);
 		if (tags.includes(ignoreTag)) {
