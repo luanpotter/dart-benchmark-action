@@ -19,10 +19,8 @@ export class Project {
 	}
 }
 
-export type ActionContext = {
-	githubToken: string;
-	repository: Repository;
-	prNumber: number;
+// What running benchmarks needs. This runs code from the PR, so no token here.
+export type RunContext = {
 	isFlutter: boolean;
 	buildCommand: string | undefined;
 	runCommand: string | undefined;
@@ -30,3 +28,12 @@ export type ActionContext = {
 	currentBranch: string;
 	baseBranch: string;
 };
+
+// What reporting results needs.
+export type ReportContext = {
+	githubToken: string;
+	repository: Repository;
+	prNumber: number;
+};
+
+export type ActionContext = RunContext & ReportContext;

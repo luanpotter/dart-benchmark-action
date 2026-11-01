@@ -13,12 +13,8 @@ export class BenchmarkResults {
 	// (the benchmark_harness package always outputs in "us" (μs)
 	private results: Record<string, number>;
 
-	private constructor(output: string | undefined) {
-		if (output === undefined) {
-			this.results = {};
-		} else {
-			this.results = BenchmarkResults.parseOutput(output);
-		}
+	private constructor(results: Record<string, number>) {
+		this.results = results;
 	}
 
 	// The output will be in the format:
@@ -54,12 +50,20 @@ export class BenchmarkResults {
 		return Object.keys(this.results);
 	}
 
+	scores(): Record<string, number> {
+		return { ...this.results };
+	}
+
 	static success(output: string): BenchmarkResults {
-		return new BenchmarkResults(output.trim());
+		return new BenchmarkResults(BenchmarkResults.parseOutput(output.trim()));
 	}
 
 	static error(): BenchmarkResults {
-		return new BenchmarkResults(undefined);
+		return new BenchmarkResults({});
+	}
+
+	static fromScores(scores: Record<string, number>): BenchmarkResults {
+		return new BenchmarkResults({ ...scores });
 	}
 
 	static computeDiffs(
