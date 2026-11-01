@@ -26,7 +26,6 @@
 		"node": ">=24"
 	},
 	"scripts": {
-		"bundle": "npm run format:write && npm run package",
 		"check": "npm run format:check && npm run lint && npm run biome && npm run typecheck && npm run test",
 		"biome": "npx biome format --error-on-warnings --no-errors-on-unmatched && npx biome lint --error-on-warnings --no-errors-on-unmatched",
 		"typecheck": "npx tsc --noEmit",
@@ -38,8 +37,7 @@
 		"local-action": "npx local-action . src/main.ts .env",
 		"package": "rm -rf dist && npx rollup --config rollup.config.mjs",
 		"package:watch": "npx rollup --config rollup.config.mjs --watch",
-		"test": "NODE_OPTIONS=--experimental-vm-modules npx jest",
-		"all": "npm run format:write && npm run lint && npm run test && npm run coverage && npm run package"
+		"test": "NODE_OPTIONS=--experimental-vm-modules npx jest"
 	},
 	"license": "MIT",
 	"jest": {
@@ -82,7 +80,9 @@
 	"overrides": {
 		"@github/local-action": {
 			"undici": "^6.29.1"
-		}
+		},
+		"glob": "^14.0.3",
+		"minimatch": "^11.0.3"
 	},
 	"dependencies": {
 		"@actions/core": "^3.0.1",
