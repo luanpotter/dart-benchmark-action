@@ -28,6 +28,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
+Note that this action will only run on `pull_request` events, and fails on all
+else. In particular, do not use `pull_request_target`, which would run the code
+of the pull request with a token that can write to your repository.
+
 This is what the comment can look like:
 
 ![image](https://github.com/user-attachments/assets/ab25e1d4-baaa-445e-9f51-ec82deb7d9a6)

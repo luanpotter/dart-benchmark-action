@@ -35246,10 +35246,12 @@ async function buildContext() {
         throw new Error('GITHUB_TOKEN environment variable is required.');
     }
     const context$1 = context;
-    if (!('pull_request' in context$1.payload && context$1.payload.pull_request)) {
-        throw new Error('This action only works on pull request events.');
-    }
     const pullRequest = context$1.payload.pull_request;
+    // other events, especially pull_request_target, can carry an untrusted PR,
+    // but would run its code with a token that can write to the repository
+    if (context$1.eventName !== 'pull_request' || !pullRequest) {
+        throw new Error('This action only works on pull_request events.');
+    }
     // get tags and see if there is `ignore-benchmarks` tag
     if (ignoreTag !== undefined) {
         const labels = pullRequest.labels;

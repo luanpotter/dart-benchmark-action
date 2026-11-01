@@ -22,6 +22,7 @@ jest.unstable_mockModule('@actions/exec', () => ({ exec: mockExec }));
 
 const getOctokit = jest.fn<(token: string) => unknown>();
 const context = {
+	eventName: 'pull_request',
 	payload: {} as Record<string, unknown>,
 	repo: { owner: 'owner', repo: 'repo' },
 };
@@ -33,6 +34,7 @@ describe('run', () => {
 	beforeEach(() => {
 		jest.resetAllMocks();
 
+		context.eventName = 'pull_request';
 		context.payload = {
 			pull_request: {
 				number: 123,
@@ -332,9 +334,26 @@ describe('run', () => {
 		await run();
 
 		expect(setFailed).toHaveBeenCalledWith(
-			'This action only works on pull request events.',
+			'This action only works on pull_request events.',
 		);
+		expect(mockExec).not.toHaveBeenCalled();
 	});
+
+	it.each(['pull_request_target', 'pull_request_review', 'workflow_run'])(
+		'should run nothing on %s, even with a pull request in the payload',
+		async eventName => {
+			mockActionInput({ paths: 'packages/p1,packages/p2' });
+			context.eventName = eventName;
+
+			await run();
+
+			expect(setFailed).toHaveBeenCalledWith(
+				'This action only works on pull_request events.',
+			);
+			expect(mockExec).not.toHaveBeenCalled();
+			expect(getOctokit).not.toHaveBeenCalled();
+		},
+	);
 
 	it('should handle benchmark execution errors gracefully', async () => {
 		mockActionInput({ paths: 'packages/p1,packages/p2' });
