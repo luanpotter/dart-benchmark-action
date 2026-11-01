@@ -1,8 +1,3 @@
-export type Repository = {
-	owner: string;
-	repo: string;
-};
-
 export class Project {
 	path: string;
 	// Script might fail to find the project name; in which case the path
@@ -28,12 +23,3 @@ export type RunContext = {
 	currentBranch: string;
 	baseBranch: string;
 };
-
-// What reporting results needs.
-export type ReportContext = {
-	githubToken: string;
-	repository: Repository;
-	prNumber: number;
-};
-
-export type ActionContext = RunContext & ReportContext;

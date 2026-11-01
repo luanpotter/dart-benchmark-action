@@ -97,7 +97,7 @@ export async function extractProjectName(
 		const output = await executeCommand(
 			`(cd ${path} ; cat pubspec.yaml | grep "^name:"| perl -pe 's/^name: (.*)$/$1/')`,
 		);
-		return output.trim();
+		return output.trim() || undefined;
 	} catch (error) {
 		logError(error, `Failed to extract project name for ${path}`);
 		return undefined;

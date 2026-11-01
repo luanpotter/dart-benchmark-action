@@ -66,7 +66,7 @@ jobs:
       - name: Check Entrypoint
         id: entrypoint
         run: |
-          grep -qx '  main: dist/index.js' action.yml
+          grep -qF 'GITHUB_ACTION_PATH/dist/index.js"' action.yml
 
       # If `dist/` was different than expected, upload the expected version as a
       # workflow artifact.
