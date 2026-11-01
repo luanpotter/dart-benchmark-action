@@ -27,6 +27,7 @@
 	},
 	"scripts": {
 		"bundle": "npm run format:write && npm run package",
+		"check": "npm run format:check && npm run lint && npm run test",
 		"ci-test": "NODE_OPTIONS=--experimental-vm-modules npx jest",
 		"coverage": "npx make-coverage-badge --output-path ./badges/coverage.svg",
 		"format:write": "npx prettier --write .",

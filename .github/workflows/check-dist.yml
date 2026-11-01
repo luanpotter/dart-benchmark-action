@@ -16,6 +16,9 @@ on:
   push:
     branches:
       - main
+    # tags are what users of the action actually run
+    tags:
+      - v*
 
 permissions:
   contents: read
@@ -37,7 +40,7 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
-          cache: npm
+          package-manager-cache: false
 
       - name: Install Dependencies
         id: install
@@ -45,23 +48,25 @@ jobs:
 
       - name: Build dist/ Directory
         id: build
-        run: npm run bundle
+        run: npm run package
 
-      # This will fail the workflow if the `dist/` directory is different than
-      # expected.
+      # The build deletes `dist/` first, so this catches any edited file, any
+      # missing file, and any committed file that the build does not produce.
       - name: Compare Directories
         id: diff
         run: |
-          if [ ! -d dist/ ]; then
-            echo "Expected dist/ directory does not exist.  See status below:"
-            ls -la ./
+          changes="$(git status --porcelain --untracked-files=all --ignored dist/)"
+          if [ -n "$changes" ]; then
+            echo "dist/ does not exactly match a clean build:"
+            echo "$changes"
             exit 1
           fi
-          if [ "$(git diff --ignore-space-at-eol --text dist/ | wc -l)" -gt "0" ]; then
-            echo "Detected uncommitted changes after build. See status below:"
-            git diff --ignore-space-at-eol --text dist/
-            exit 1
-          fi
+
+      # A matching `dist/` means nothing if the action runs some other file.
+      - name: Check Entrypoint
+        id: entrypoint
+        run: |
+          grep -qx '  main: dist/index.js' action.yml
 
       # If `dist/` was different than expected, upload the expected version as a
       # workflow artifact.
