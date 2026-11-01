@@ -147,11 +147,7 @@ export class CommentFormatter {
 	}
 
 	private computeDiffs(project: Project): BenchmarkDiff[] {
-		return this.results.computeDiffs(
-			project,
-			this.currentBranch,
-			this.baseBranch,
-		);
+		return this.results.computeDiffs(project);
 	}
 
 	private tabulate(cols: string[]): string {

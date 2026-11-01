@@ -34993,21 +34993,19 @@ class BenchmarkResults {
 }
 class ResultMap {
     results = new Map();
-    static _toKey(project, branch) {
-        return `${project.identifier()}/${branch}`;
+    static _toKey(project, side) {
+        return `${project.identifier()}/${side}`;
     }
-    set(project, branch, value) {
-        this.results.set(ResultMap._toKey(project, branch), value);
+    set(project, side, value) {
+        this.results.set(ResultMap._toKey(project, side), value);
         return this;
     }
-    get(project, branch) {
-        return (this.results.get(ResultMap._toKey(project, branch)) ??
+    get(project, side) {
+        return (this.results.get(ResultMap._toKey(project, side)) ??
             BenchmarkResults.error());
     }
-    computeDiffs(project, branchA, branchB) {
-        const a = this.get(project, branchA);
-        const b = this.get(project, branchB);
-        return BenchmarkResults.computeDiffs(a, b);
+    computeDiffs(project) {
+        return BenchmarkResults.computeDiffs(this.get(project, 'head'), this.get(project, 'base'));
     }
 }
 
@@ -35129,7 +35127,7 @@ class CommentFormatter {
         this.output.push('---', '_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)._', '');
     }
     computeDiffs(project) {
-        return this.results.computeDiffs(project, this.currentBranch, this.baseBranch);
+        return this.results.computeDiffs(project);
     }
     tabulate(cols) {
         return `| ${cols.join(' | ')} |`;
@@ -35162,12 +35160,12 @@ async function run() {
         info('Create result map:');
         const results = new ResultMap();
         info(`Running benchmarks for ${context.currentBranch}:`);
-        await runBenchmarks(context, results, context.currentBranch);
+        await runBenchmarks(context, results, 'head', context.currentBranch);
         info('Fetching main branch...');
         await executeCommand(`git fetch origin ${context.baseBranch}`);
         await executeCommand(`git checkout ${context.baseBranch}`);
         info(`Running benchmarks for ${context.baseBranch}:`);
-        await runBenchmarks(context, results, context.baseBranch);
+        await runBenchmarks(context, results, 'base', context.baseBranch);
         info(`Compiling results into comment body:`);
         const commentFormatter = new CommentFormatter(context.projects, context.currentBranch, context.baseBranch, results);
         info(`Creating or updating comment on GitHub:`);
@@ -35212,16 +35210,16 @@ async function createOrUpdateComment(context, commentBody) {
 // but for flutter-mode, we need to hack it with flutter test
 // flutter test $path/benchmark/main.dart -r silent 2>/dev/null || true
 // sadly there does not seem to be any other way
-async function runBenchmarks(context, results, branch) {
+async function runBenchmarks(context, results, side, branch) {
     for (const project of context.projects) {
         const { path } = project;
         const command = context.isFlutter
             ? `(cd ${path} ; flutter test benchmark/main.dart -r silent) 2>/dev/null || true`
             : `(cd ${path} ; dart run benchmark/main.dart)`;
-        await runBenchmark(results, command, project, branch);
+        await runBenchmark(results, command, project, side, branch);
     }
 }
-async function runBenchmark(results, command, project, branch) {
+async function runBenchmark(results, command, project, side, branch) {
     const { path } = project;
     info(`+ Running benchmarks for ${path} on branch ${branch}:`);
     let result;
@@ -35233,7 +35231,7 @@ async function runBenchmark(results, command, project, branch) {
         logError(error, `Failed to run benchmark for ${path} on branch ${branch}`);
         result = BenchmarkResults.error();
     }
-    results.set(project, branch, result);
+    results.set(project, side, result);
 }
 async function buildContext() {
     const isFlutter = getBooleanInput('is-flutter', { required: true });

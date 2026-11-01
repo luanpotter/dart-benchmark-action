@@ -9,14 +9,14 @@ describe('CommentFormatter', () => {
 		const results = new ResultMap();
 		results.set(
 			project,
-			'feature',
+			'head',
 			BenchmarkResults.success(
 				'Iteration Benchmark(RunTime): 146.1234445775 us.',
 			),
 		);
 		results.set(
 			project,
-			'main',
+			'base',
 			BenchmarkResults.success(
 				'Iteration Benchmark(RunTime): 155.3733089882978 us.',
 			),
@@ -48,6 +48,47 @@ describe('CommentFormatter', () => {
 		expect(result).toBe(expected.join('\n'));
 	});
 
+	it('both branches with the same name, single diff, success', () => {
+		const project = new Project('.', 'my-project');
+
+		const results = new ResultMap();
+		results.set(
+			project,
+			'head',
+			BenchmarkResults.success('Template(RunTime): 100.456 us.'),
+		);
+		results.set(
+			project,
+			'base',
+			BenchmarkResults.success('Template(RunTime): 100.123 us.'),
+		);
+
+		const commentFormatter = new CommentFormatter(
+			[project],
+			'main',
+			'main',
+			results,
+		);
+
+		const result = commentFormatter.format();
+
+		const expected = [
+			'## Benchmark Results',
+			'',
+			'### Package <b>my-project</b>:',
+			'',
+			' * Current Branch [main]: 100.456 μs',
+			' * Base Branch [main]: 100.123 μs',
+			' * Diff: 🔴 +0.333 %',
+			'',
+			'---',
+			'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)._',
+			'',
+		];
+
+		expect(result).toBe(expected.join('\n'));
+	});
+
 	it('multiple projects, single diff, success', () => {
 		const p1 = new Project('packages/p1', 'p1');
 		const p2 = new Project('packages/p2', 'p2');
@@ -55,22 +96,22 @@ describe('CommentFormatter', () => {
 		const results = new ResultMap();
 		results.set(
 			p1,
-			'feature',
+			'head',
 			BenchmarkResults.success('Template(RunTime): 100.456 us.'),
 		);
 		results.set(
 			p1,
-			'main',
+			'base',
 			BenchmarkResults.success('Template(RunTime): 100.123 us.'),
 		);
 		results.set(
 			p2,
-			'feature',
+			'head',
 			BenchmarkResults.success('Template(RunTime): 200.123 us.'),
 		);
 		results.set(
 			p2,
-			'main',
+			'base',
 			BenchmarkResults.success('Template(RunTime): 200.456 us.'),
 		);
 
@@ -114,7 +155,7 @@ describe('CommentFormatter', () => {
 		const results = new ResultMap();
 		results.set(
 			project,
-			'feature',
+			'head',
 			BenchmarkResults.success(
 				[
 					'Iteration Benchmark(RunTime): 146.1234445775 us.',
@@ -124,7 +165,7 @@ describe('CommentFormatter', () => {
 		);
 		results.set(
 			project,
-			'main',
+			'base',
 			BenchmarkResults.success(
 				[
 					'Iteration Benchmark(RunTime): 155.3733089882978 us.',
@@ -167,7 +208,7 @@ describe('CommentFormatter', () => {
 		const results = new ResultMap();
 		results.set(
 			p1,
-			'feature',
+			'head',
 			BenchmarkResults.success(
 				['Template(RunTime): 100.456 us.', 'Other(RunTime): 100.456 us.'].join(
 					'\n',
@@ -176,7 +217,7 @@ describe('CommentFormatter', () => {
 		);
 		results.set(
 			p1,
-			'main',
+			'base',
 			BenchmarkResults.success(
 				['Template(RunTime): 100.123 us.', 'Other(RunTime): 100.123 us.'].join(
 					'\n',
@@ -185,7 +226,7 @@ describe('CommentFormatter', () => {
 		);
 		results.set(
 			p2,
-			'feature',
+			'head',
 			BenchmarkResults.success(
 				['Template(RunTime): 200.123 us.', 'Other(RunTime): 200.123 us.'].join(
 					'\n',
@@ -194,7 +235,7 @@ describe('CommentFormatter', () => {
 		);
 		results.set(
 			p2,
-			'main',
+			'base',
 			BenchmarkResults.success(
 				['Template(RunTime): 200.456 us.', 'Other(RunTime): 200.456 us.'].join(
 					'\n',
@@ -242,8 +283,8 @@ describe('CommentFormatter', () => {
 		const project = new Project('.', 'my-project');
 
 		const results = new ResultMap();
-		results.set(project, 'feature', BenchmarkResults.error());
-		results.set(project, 'main', BenchmarkResults.error());
+		results.set(project, 'head', BenchmarkResults.error());
+		results.set(project, 'base', BenchmarkResults.error());
 
 		const commentFormatter = new CommentFormatter(
 			[project],

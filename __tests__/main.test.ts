@@ -105,6 +105,45 @@ describe('run', () => {
 		});
 	});
 
+	it('should compare both sides of a pull request from a fork, with the same branch name', async () => {
+		mockActionInput({ paths: 'packages/p1' });
+		context.payload = {
+			pull_request: {
+				number: 123,
+				head: { ref: 'main' },
+				base: { ref: 'main' },
+				labels: [],
+			},
+		};
+		mockCommandOutputs({
+			// the mock is on `feature-branch` until the action checks out the base
+			'feature-branch/p1': 'Template(RunTime): 100.456 us.',
+			'main/p1': 'Template(RunTime): 100.123 us.',
+		});
+		const { createComment } = mockOctokit();
+
+		await run();
+
+		expect(createComment).toHaveBeenCalledWith({
+			owner: 'owner',
+			repo: 'repo',
+			issue_number: 123,
+			body: [
+				'## Benchmark Results',
+				'',
+				'### Package <b>p1</b>:',
+				'',
+				' * Current Branch [main]: 100.456 μs',
+				' * Base Branch [main]: 100.123 μs',
+				' * Diff: 🔴 +0.333 %',
+				'',
+				'---',
+				'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)._',
+				'',
+			].join('\n'),
+		});
+	});
+
 	it('multiple templates are supported and extra lines are ignored', async () => {
 		mockActionInput({ paths: 'packages/p1' });
 		mockCommandOutputs({
