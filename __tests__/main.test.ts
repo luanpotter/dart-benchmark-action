@@ -1,24 +1,39 @@
-import * as core from '@actions/core';
-import * as exec from '@actions/exec';
-import * as github from '@actions/github';
-import { run } from '../src/main';
+import { jest } from '@jest/globals';
+import type { ExecOptions } from '@actions/exec';
 
-jest.mock('@actions/exec');
-jest.mock('@actions/core');
-jest.mock('@actions/github');
+const getInput = jest.fn<(name: string) => string | undefined>();
+const getBooleanInput = jest.fn<(name: string) => boolean>();
+const info = jest.fn<(message: string) => void>();
+const error = jest.fn<(message: string) => void>();
+const setFailed = jest.fn<(message: string) => void>();
+jest.unstable_mockModule('@actions/core', () => ({
+	getInput,
+	getBooleanInput,
+	info,
+	error,
+	setFailed,
+}));
 
-Object.defineProperty(github.context, 'repo', {
-	get: () => ({
-		owner: 'owner',
-		repo: 'repo',
-	}),
-});
+const mockExec =
+	jest.fn<
+		(command: string, args: string[], options: ExecOptions) => Promise<number>
+	>();
+jest.unstable_mockModule('@actions/exec', () => ({ exec: mockExec }));
+
+const getOctokit = jest.fn<(token: string) => unknown>();
+const context = {
+	payload: {} as Record<string, unknown>,
+	repo: { owner: 'owner', repo: 'repo' },
+};
+jest.unstable_mockModule('@actions/github', () => ({ getOctokit, context }));
+
+const { run } = await import('../src/main.js');
 
 describe('run', () => {
 	beforeEach(() => {
 		jest.resetAllMocks();
 
-		github.context.payload = {
+		context.payload = {
 			pull_request: {
 				number: 123,
 				head: { ref: 'feature-branch' },
@@ -32,50 +47,35 @@ describe('run', () => {
 
 	it('should fetch inputs and execute benchmarks on both branches', async () => {
 		mockActionInput({ paths: 'packages/p1,packages/p2' });
-		const mockExec = mockCommandOutputs({
+		mockCommandOutputs({
 			'main/p1': 'Template(RunTime): 100.123 us.',
 			'main/p2': 'Template(RunTime): 200.456 us.',
 			'feature-branch/p1': 'Template(RunTime): 100.456 us.',
 			'feature-branch/p2': 'Template(RunTime): 200.123 us.',
 		});
-
-		const mockComments = jest.fn().mockResolvedValueOnce({ data: [] });
-		const mockCreateComment = jest.fn();
-		const mockUpdateComment = jest.fn();
-
-		(github.getOctokit as jest.Mock).mockReturnValue({
-			rest: {
-				issues: {
-					listComments: mockComments,
-					createComment: mockCreateComment,
-					updateComment: mockUpdateComment,
-				},
-			},
-		});
+		const { listComments, createComment } = mockOctokit();
 
 		await run();
 
 		// name extraction
 		expectExec(
-			mockExec,
 			'(cd packages/p1 ; cat pubspec.yaml | grep "^name:"| perl -pe \'s/^name: (.*)$/$1/\')',
 		);
 		expectExec(
-			mockExec,
 			'(cd packages/p2 ; cat pubspec.yaml | grep "^name:"| perl -pe \'s/^name: (.*)$/$1/\')',
 		);
 
 		// benchmark execution
-		expectExec(mockExec, '(cd packages/p1 ; dart run benchmark/main.dart)');
-		expectExec(mockExec, '(cd packages/p2 ; dart run benchmark/main.dart)');
+		expectExec('(cd packages/p1 ; dart run benchmark/main.dart)');
+		expectExec('(cd packages/p2 ; dart run benchmark/main.dart)');
 
-		expect(mockComments).toHaveBeenCalledWith({
+		expect(listComments).toHaveBeenCalledWith({
 			owner: 'owner',
 			repo: 'repo',
 			issue_number: 123,
 		});
 
-		expect(mockCreateComment).toHaveBeenCalledWith({
+		expect(createComment).toHaveBeenCalledWith({
 			owner: 'owner',
 			repo: 'repo',
 			issue_number: 123,
@@ -105,7 +105,7 @@ describe('run', () => {
 
 	it('multiple templates are supported and extra lines are ignored', async () => {
 		mockActionInput({ paths: 'packages/p1' });
-		const mockExec = mockCommandOutputs({
+		mockCommandOutputs({
 			'main/p1': [
 				'[extra lines are ignored]',
 				'T1(RunTime): 100.456 us.',
@@ -121,39 +121,25 @@ describe('run', () => {
 				'[extra lines are ignored]',
 			].join('\n'),
 		});
-
-		const mockComments = jest.fn().mockResolvedValueOnce({ data: [] });
-		const mockCreateComment = jest.fn();
-		const mockUpdateComment = jest.fn();
-
-		(github.getOctokit as jest.Mock).mockReturnValue({
-			rest: {
-				issues: {
-					listComments: mockComments,
-					createComment: mockCreateComment,
-					updateComment: mockUpdateComment,
-				},
-			},
-		});
+		const { listComments, createComment } = mockOctokit();
 
 		await run();
 
 		// name extraction
 		expectExec(
-			mockExec,
 			'(cd packages/p1 ; cat pubspec.yaml | grep "^name:"| perl -pe \'s/^name: (.*)$/$1/\')',
 		);
 
 		// benchmark execution
-		expectExec(mockExec, '(cd packages/p1 ; dart run benchmark/main.dart)');
+		expectExec('(cd packages/p1 ; dart run benchmark/main.dart)');
 
-		expect(mockComments).toHaveBeenCalledWith({
+		expect(listComments).toHaveBeenCalledWith({
 			owner: 'owner',
 			repo: 'repo',
 			issue_number: 123,
 		});
 
-		expect(mockCreateComment).toHaveBeenCalledWith({
+		expect(createComment).toHaveBeenCalledWith({
 			owner: 'owner',
 			repo: 'repo',
 			issue_number: 123,
@@ -177,56 +163,39 @@ describe('run', () => {
 
 	it('should execute in flutter mode', async () => {
 		mockActionInput({ paths: 'packages/p1,packages/p2', isFlutter: true });
-		const mockExec = mockCommandOutputs({
+		mockCommandOutputs({
 			'main/p1': 'Template(RunTime): 100.123 us.',
 			'main/p2': 'Template(RunTime): 200.456 us.',
 			'feature-branch/p1': 'Template(RunTime): 100.456 us.',
 			'feature-branch/p2': 'Template(RunTime): 200.123 us.',
 		});
-
-		const mockComments = jest.fn().mockResolvedValueOnce({ data: [] });
-		const mockCreateComment = jest.fn();
-		const mockUpdateComment = jest.fn();
-
-		(github.getOctokit as jest.Mock).mockReturnValue({
-			rest: {
-				issues: {
-					listComments: mockComments,
-					createComment: mockCreateComment,
-					updateComment: mockUpdateComment,
-				},
-			},
-		});
+		const { listComments, createComment } = mockOctokit();
 
 		await run();
 
 		// name extraction
 		expectExec(
-			mockExec,
 			'(cd packages/p1 ; cat pubspec.yaml | grep "^name:"| perl -pe \'s/^name: (.*)$/$1/\')',
 		);
 		expectExec(
-			mockExec,
 			'(cd packages/p2 ; cat pubspec.yaml | grep "^name:"| perl -pe \'s/^name: (.*)$/$1/\')',
 		);
 
 		// benchmark execution
 		expectExec(
-			mockExec,
 			'(cd packages/p1 ; flutter test benchmark/main.dart -r silent) 2>/dev/null || true',
 		);
 		expectExec(
-			mockExec,
 			'(cd packages/p2 ; flutter test benchmark/main.dart -r silent) 2>/dev/null || true',
 		);
 
-		expect(mockComments).toHaveBeenCalledWith({
+		expect(listComments).toHaveBeenCalledWith({
 			owner: 'owner',
 			repo: 'repo',
 			issue_number: 123,
 		});
 
-		expect(mockCreateComment).toHaveBeenCalledWith({
+		expect(createComment).toHaveBeenCalledWith({
 			owner: 'owner',
 			repo: 'repo',
 			issue_number: 123,
@@ -256,7 +225,7 @@ describe('run', () => {
 
 	it('should handle package name resolution failure gracefully', async () => {
 		mockActionInput({ paths: 'packages/p1,packages/p2' });
-		const mockExec = mockCommandOutputs(
+		mockCommandOutputs(
 			{
 				'main/p1': 'Template(RunTime): 100.123 us.',
 				'main/p2': 'Template(RunTime): 200.456 us.',
@@ -267,33 +236,20 @@ describe('run', () => {
 				failPackageNameResolution: true,
 			},
 		);
-
-		const mockComments = jest.fn().mockResolvedValueOnce({ data: [] });
-		const mockCreateComment = jest.fn();
-		const mockUpdateComment = jest.fn();
-
-		(github.getOctokit as jest.Mock).mockReturnValue({
-			rest: {
-				issues: {
-					listComments: mockComments,
-					createComment: mockCreateComment,
-					updateComment: mockUpdateComment,
-				},
-			},
-		});
+		const { listComments, createComment } = mockOctokit();
 
 		await run();
 
-		expectExec(mockExec, '(cd packages/p1 ; dart run benchmark/main.dart)');
-		expectExec(mockExec, '(cd packages/p2 ; dart run benchmark/main.dart)');
+		expectExec('(cd packages/p1 ; dart run benchmark/main.dart)');
+		expectExec('(cd packages/p2 ; dart run benchmark/main.dart)');
 
-		expect(mockComments).toHaveBeenCalledWith({
+		expect(listComments).toHaveBeenCalledWith({
 			owner: 'owner',
 			repo: 'repo',
 			issue_number: 123,
 		});
 
-		expect(mockCreateComment).toHaveBeenCalledWith({
+		expect(createComment).toHaveBeenCalledWith({
 			owner: 'owner',
 			repo: 'repo',
 			issue_number: 123,
@@ -323,37 +279,25 @@ describe('run', () => {
 
 	it('should update an existing comment if present', async () => {
 		mockActionInput({ paths: 'packages/p1,packages/p2' });
-		const mockExec = mockCommandOutputs({
+		mockCommandOutputs({
 			'main/p1': 'Template(RunTime): 100.123 us.',
 			'main/p2': 'Template(RunTime): 200.456 us.',
 			'feature-branch/p1': 'Template(RunTime): 100.456 us.',
 			'feature-branch/p2': 'Template(RunTime): 200.123 us.',
 		});
-
-		const existingComment = {
-			id: 1,
-			body: '### Benchmark Results\nOld results',
-		};
-		const mockComments = jest
-			.fn()
-			.mockResolvedValueOnce({ data: [existingComment] });
-		const mockUpdateComment = jest.fn();
-
-		(github.getOctokit as jest.Mock).mockReturnValue({
-			rest: {
-				issues: {
-					listComments: mockComments,
-					updateComment: mockUpdateComment,
-				},
+		const { updateComment } = mockOctokit([
+			{
+				id: 1,
+				body: '### Benchmark Results\nOld results',
 			},
-		});
+		]);
 
 		await run();
 
-		expectExec(mockExec, '(cd packages/p1 ; dart run benchmark/main.dart)');
-		expectExec(mockExec, '(cd packages/p2 ; dart run benchmark/main.dart)');
+		expectExec('(cd packages/p1 ; dart run benchmark/main.dart)');
+		expectExec('(cd packages/p2 ; dart run benchmark/main.dart)');
 
-		expect(mockUpdateComment).toHaveBeenCalledWith({
+		expect(updateComment).toHaveBeenCalledWith({
 			owner: 'owner',
 			repo: 'repo',
 			comment_id: 1,
@@ -383,11 +327,11 @@ describe('run', () => {
 
 	it('should fail if no pull request context is available', async () => {
 		mockActionInput({ paths: 'packages/p1,packages/p2' });
-		github.context.payload = {};
+		context.payload = {};
 
 		await run();
 
-		expect(core.setFailed).toHaveBeenCalledWith(
+		expect(setFailed).toHaveBeenCalledWith(
 			'This action only works on pull request events.',
 		);
 	});
@@ -395,49 +339,38 @@ describe('run', () => {
 	it('should handle benchmark execution errors gracefully', async () => {
 		mockActionInput({ paths: 'packages/p1,packages/p2' });
 
-		const mockExec = exec.exec as jest.Mock;
 		mockExec.mockRejectedValue(new Error('Execution failed'));
 
 		await expect(run()).resolves.not.toThrow();
 
-		expect(core.error).toHaveBeenCalledWith(
+		expect(error).toHaveBeenCalledWith(
 			'+ Failed to run benchmark for packages/p1 on branch feature-branch: Execution failed',
 		);
-		expect(core.error).toHaveBeenCalledWith(
+		expect(error).toHaveBeenCalledWith(
 			'+ Failed to run benchmark for packages/p2 on branch feature-branch: Execution failed',
 		);
-		expect(core.setFailed).toHaveBeenCalled();
+		expect(setFailed).toHaveBeenCalled();
 	});
 
 	it('should run commands in the step environment and keep the token for commenting', async () => {
 		mockActionInput({ paths: 'packages/p1' });
-		const mockExec = mockCommandOutputs({
+		mockCommandOutputs({
 			'main/p1': 'Template(RunTime): 100.123 us.',
 			'feature-branch/p1': 'Template(RunTime): 100.456 us.',
 		});
-
-		const mockCreateComment = jest.fn();
-		(github.getOctokit as jest.Mock).mockReturnValue({
-			rest: {
-				issues: {
-					listComments: jest.fn().mockResolvedValueOnce({ data: [] }),
-					createComment: mockCreateComment,
-				},
-			},
-		});
+		const { createComment } = mockOctokit();
 
 		await run();
 
 		const commandEnv = { ...process.env };
 		delete commandEnv.GITHUB_TOKEN;
-		const calls = mockExec.mock.calls as [string, string[], exec.ExecOptions][];
 		// name extraction, head benchmark, git fetch, git checkout, base benchmark
-		expect(calls.map(([, , options]) => options.env)).toEqual(
+		expect(mockExec.mock.calls.map(([, , options]) => options.env)).toEqual(
 			Array(5).fill(commandEnv),
 		);
 
-		expect(github.getOctokit).toHaveBeenCalledWith('fake-token');
-		expect(mockCreateComment).toHaveBeenCalled();
+		expect(getOctokit).toHaveBeenCalledWith('fake-token');
+		expect(createComment).toHaveBeenCalled();
 	});
 
 	function mockActionInput({
@@ -449,7 +382,7 @@ describe('run', () => {
 		ignoreTag?: string;
 		isFlutter?: boolean;
 	}): void {
-		(core.getInput as jest.Mock).mockImplementation(arg => {
+		getInput.mockImplementation(arg => {
 			if (arg === 'paths') {
 				return paths;
 			} else if (arg === 'ignore-tag') {
@@ -458,13 +391,29 @@ describe('run', () => {
 				throw new Error(`Unexpected input: ${arg}`);
 			}
 		});
-		(core.getBooleanInput as jest.Mock).mockImplementation(arg => {
+		getBooleanInput.mockImplementation(arg => {
 			if (arg === 'is-flutter') {
 				return isFlutter;
 			} else {
 				throw new Error(`Unexpected input: ${arg}`);
 			}
 		});
+	}
+
+	function mockOctokit(existingComments: { id: number; body: string }[] = []): {
+		listComments: jest.Mock<(params: object) => Promise<unknown>>;
+		createComment: jest.Mock<(params: object) => Promise<unknown>>;
+		updateComment: jest.Mock<(params: object) => Promise<unknown>>;
+	} {
+		const listComments = jest
+			.fn<(params: object) => Promise<unknown>>()
+			.mockResolvedValue({ data: existingComments });
+		const createComment = jest.fn<(params: object) => Promise<unknown>>();
+		const updateComment = jest.fn<(params: object) => Promise<unknown>>();
+		getOctokit.mockReturnValue({
+			rest: { issues: { listComments, createComment, updateComment } },
+		});
+		return { listComments, createComment, updateComment };
 	}
 
 	function mockCommandOutputs(
@@ -474,49 +423,38 @@ describe('run', () => {
 		} = {
 			failPackageNameResolution: false,
 		},
-	): jest.Mock {
-		const mockExec = exec.exec as jest.Mock;
+	): void {
 		const { failPackageNameResolution } = options;
 
 		let isMain = false;
-		mockExec.mockImplementation(
-			async (
-				_, // 'bash' command
-				args: string[],
-				options: {
-					listeners?: { stdout: (data: string) => void };
-				},
-			) => {
-				const command = args[1];
-				const project = command.includes('p1') ? 'p1' : 'p2';
-				let response: string | undefined = undefined;
-				if (command.startsWith('git ')) {
-					isMain = true;
-				} else if (
-					command.includes('; dart ') ||
-					command.includes('; flutter ')
-				) {
-					const branch = isMain ? 'main' : 'feature-branch';
-					const key = `${branch}/${project}`;
-					response = results[key];
-				} else if (command.startsWith('(cd ')) {
-					// package name command
-					if (failPackageNameResolution) {
-						return Promise.resolve(1);
-					}
-					response = project;
+		mockExec.mockImplementation(async (_, args, execOptions) => {
+			const command = args[1];
+			const project = command.includes('p1') ? 'p1' : 'p2';
+			let response: string | undefined = undefined;
+			if (command.startsWith('git ')) {
+				isMain = true;
+			} else if (
+				command.includes('; dart ') ||
+				command.includes('; flutter ')
+			) {
+				const branch = isMain ? 'main' : 'feature-branch';
+				const key = `${branch}/${project}`;
+				response = results[key];
+			} else if (command.startsWith('(cd ')) {
+				// package name command
+				if (failPackageNameResolution) {
+					return Promise.resolve(1);
 				}
-				if (response !== undefined) {
-					options?.listeners?.stdout?.(response);
-				}
-				return Promise.resolve(0);
-			},
-		);
-
-		return mockExec;
+				response = project;
+			}
+			if (response !== undefined) {
+				execOptions.listeners?.stdout?.(Buffer.from(response));
+			}
+			return Promise.resolve(0);
+		});
 	}
 
-	function expectExec(mockExec: jest.Mock, command: string): void {
+	function expectExec(command: string): void {
 		expect(mockExec).toHaveBeenCalledWith(
 			'/bin/bash',
 			['-c', command],

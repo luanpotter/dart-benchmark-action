@@ -1,9 +1,9 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
 import { exec } from '@actions/exec';
-import { BenchmarkResults, ResultMap } from './result_map';
-import { ActionContext, Project } from './action_context';
-import { CommentFormatter } from './comment_formatter';
+import { BenchmarkResults, ResultMap } from './result_map.js';
+import { ActionContext, Project } from './action_context.js';
+import { CommentFormatter } from './comment_formatter.js';
 
 export async function run(): Promise<void> {
 	try {
