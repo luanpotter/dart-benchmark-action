@@ -212,6 +212,61 @@ describe('run', () => {
 		});
 	});
 
+	it('should use the run command in each project on both branches, over the default', async () => {
+		mockActionInput({
+			paths: 'packages/p1,packages/p2',
+			isFlutter: true,
+			runCommand: 'dart compile exe bench.dart -o /tmp/bench && /tmp/bench',
+		});
+		mockCommandOutputs({
+			'main/p1': 'Generated: /tmp/bench\nTemplate(RunTime): 100.123 us.',
+			'main/p2': 'Generated: /tmp/bench\nTemplate(RunTime): 200.456 us.',
+			'feature-branch/p1':
+				'Generated: /tmp/bench\nTemplate(RunTime): 100.456 us.',
+			'feature-branch/p2':
+				'Generated: /tmp/bench\nTemplate(RunTime): 200.123 us.',
+		});
+		const { createComment } = mockOctokit();
+
+		await run();
+
+		const commands = mockExec.mock.calls.map(([, args]) => args[1]);
+		expect(commands.slice(2)).toEqual([
+			'(cd packages/p1 ; dart compile exe bench.dart -o /tmp/bench && /tmp/bench)',
+			'(cd packages/p2 ; dart compile exe bench.dart -o /tmp/bench && /tmp/bench)',
+			'git fetch origin main',
+			'git checkout main',
+			'(cd packages/p1 ; dart compile exe bench.dart -o /tmp/bench && /tmp/bench)',
+			'(cd packages/p2 ; dart compile exe bench.dart -o /tmp/bench && /tmp/bench)',
+		]);
+		expect(createComment).toHaveBeenCalledWith({
+			owner: 'owner',
+			repo: 'repo',
+			issue_number: 123,
+			body: [
+				'## Benchmark Results',
+				'',
+				'<details>',
+				'<summary><h3>Package <b>p1</b>: 🔴 +0.333 %</h3></summary>',
+				' * Current Branch [feature-branch]: 100.456 μs',
+				' * Base Branch [main]: 100.123 μs',
+				' * Diff: 🔴 +0.333 %',
+				'</details>',
+				'',
+				'<details>',
+				'<summary><h3>Package <b>p2</b>: 🟢 -0.166 %</h3></summary>',
+				' * Current Branch [feature-branch]: 200.123 μs',
+				' * Base Branch [main]: 200.456 μs',
+				' * Diff: 🟢 -0.166 %',
+				'</details>',
+				'',
+				'---',
+				'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)._',
+				'',
+			].join('\n'),
+		});
+	});
+
 	it('multiple templates are supported and extra lines are ignored', async () => {
 		mockActionInput({ paths: 'packages/p1' });
 		mockCommandOutputs({
@@ -504,11 +559,13 @@ describe('run', () => {
 		ignoreTag = undefined,
 		isFlutter = false,
 		buildCommand = '',
+		runCommand = '',
 	}: {
 		paths: string;
 		ignoreTag?: string;
 		isFlutter?: boolean;
 		buildCommand?: string;
+		runCommand?: string;
 	}): void {
 		getInput.mockImplementation(arg => {
 			if (arg === 'paths') {
@@ -517,6 +574,8 @@ describe('run', () => {
 				return ignoreTag;
 			} else if (arg === 'build-command') {
 				return buildCommand;
+			} else if (arg === 'run-command') {
+				return runCommand;
 			} else {
 				throw new Error(`Unexpected input: ${arg}`);
 			}
