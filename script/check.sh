@@ -1,10 +1,9 @@
 #!/bin/bash
 
-# Runs the format check, lint, typecheck and tests. This is much faster than
-# Super-linter, which CI also runs, but it covers less.
+# Runs the format check, lint, typecheck, tests and build. CI runs this too, along
+# with Super-linter, which is much slower and covers more.
 #
-# With --fix, it also fixes what it can, and rebuilds dist/ and the coverage
-# badge. Use this before pushing any change to src/, as CI fails on a stale dist/.
+# With --fix, it also fixes what it can, and updates the coverage badge.
 #
 # Usage:
 #
