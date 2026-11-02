@@ -1,143 +1,109 @@
 #!/bin/bash
 
-# Exit early
-# See: https://www.gnu.org/savannah-checkouts/gnu/bash/manual/bash.html#The-Set-Builtin
-set -e
-
-# About:
+# Opens the PR that bumps the version. Merging it releases that version, through
+# .github/workflows/release.yml.
 #
-# This is a helper script to tag and push a new release. GitHub Actions use
-# release tags to allow users to select a specific version of the action to use.
-#
-# See: https://github.com/actions/typescript-action#publishing-a-new-release
-# See: https://github.com/actions/toolkit/blob/master/docs/action-versioning.md#recommendations
-#
-# This script will do the following:
-#
-# 1. Retrieve the latest release tag
-# 2. Display the latest release tag
-# 3. Prompt the user for a new release tag
-# 4. Validate the new release tag
-# 5. Remind user to update the version field in package.json
-# 6. Refuse to continue unless HEAD is on main and dist/ matches a clean build
-# 7. Tag a new release
-# 8. Set 'is_major_release' variable
-# 9. Point separate major release tag (e.g. v1, v2) to the new release
-# 10. Push the new tags (with commits, if any) to remote
-# 11. If this is a major release, create a 'releases/v#' branch and push
+# With test, makes a throwaway tag instead, to try a branch on another repository.
+# dist/ is only ever committed on tags, so a workflow cannot use a branch directly.
 #
 # Usage:
 #
-# script/release
+# script/release [patch|minor|major]
+# script/release test
 
-# Variables
-semver_tag_regex='v[0-9]+\.[0-9]+\.[0-9]+$'
-semver_tag_glob='v[0-9].[0-9].[0-9]*'
-git_remote='origin'
-major_semver_tag_regex='\(v[0-9]*\)'
+set -euo pipefail
 
-# Terminal colors
-OFF='\033[0m'
-BOLD_RED='\033[1;31m'
-BOLD_GREEN='\033[1;32m'
-BOLD_BLUE='\033[1;34m'
-BOLD_PURPLE='\033[1;35m'
-BOLD_UNDERLINED='\033[1;4m'
-BOLD='\033[1m'
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-# 1. Retrieve the latest release tag
-if ! latest_tag=$(git describe --abbrev=0 --match="$semver_tag_glob"); then
-	# There are no existing release tags
-	echo -e "No tags found (yet) - Continue to create and push your first tag"
-	latest_tag="[unknown]"
-fi
+# Named everywhere, so that this does not depend on any local push settings.
+remote=origin
+main=main
 
-# 2. Display the latest release tag
-echo -e "The latest release tag is: ${BOLD_BLUE}${latest_tag}${OFF}"
-
-# 3. Prompt the user for a new release tag
-read -r -p 'Enter a new release tag (vX.X.X format): ' new_tag
-
-# 4. Validate the new release tag
-if echo "$new_tag" | grep -q -E "$semver_tag_regex"; then
-	# Release tag is valid
-	echo -e "Tag: ${BOLD_BLUE}$new_tag${OFF} is valid syntax"
-else
-	# Release tag is not in `vX.X.X` format
-	echo -e "Tag: ${BOLD_BLUE}$new_tag${OFF} is ${BOLD_RED}not valid${OFF} (must be in ${BOLD}vX.X.X${OFF} format)"
+fail() {
+	echo "$1" >&2
 	exit 1
-fi
+}
 
-# 5. Remind user to update the version field in package.json
-echo -e -n "Make sure the version field in package.json is ${BOLD_BLUE}$new_tag${OFF}. Yes? [Y/${BOLD_UNDERLINED}n${OFF}] "
-read -r YN
+require_clean_tree() {
+	[ -z "$(git status --porcelain)" ] || fail "Commit or stash your changes first."
+}
 
-if [[ ! ($YN == "y" || $YN == "Y") ]]; then
-	# Package.json version field is not up to date
-	echo -e "Please update the package.json version to ${BOLD_PURPLE}$new_tag${OFF} and commit your changes"
-	exit 1
-fi
+make_test_tag() {
+	require_clean_tree
+	local branch tag
+	branch="$(git branch --show-current)"
+	[ -n "$branch" ] || fail "Run this from a branch."
+	tag="test-$(git rev-parse --short HEAD)"
 
-# 6. Refuse to continue unless HEAD is on main and dist/ matches a clean build
-git fetch "$git_remote" main
-if ! git merge-base --is-ancestor HEAD "$git_remote/main"; then
-	echo -e "${BOLD_RED}HEAD is not on $git_remote/main${OFF}, so its checks have not run"
-	exit 1
-fi
+	# shellcheck disable=SC2064 # the branch must be the one from right now
+	trap "git switch --quiet --force '$branch'" EXIT
+	git switch --quiet --detach
+	npm ci
+	npm run package
+	git add --force dist
+	git commit --quiet --message "Test $tag"
+	git tag --force --annotate "$tag" --message "$tag"
+	git switch --quiet "$branch"
+	trap - EXIT
 
-npm ci
-npm run package
-dist_changes=$(git status --porcelain --untracked-files=all --ignored dist/)
-if [ -n "$dist_changes" ]; then
-	echo -e "${BOLD_RED}dist/ does not exactly match a clean build:${OFF}"
-	echo "$dist_changes"
-	exit 1
-fi
+	git push --force "$remote" "$tag"
 
-# 7. Tag a new release
-git tag "$new_tag" --annotate --message "$new_tag Release"
-echo -e "Tagged: ${BOLD_GREEN}$new_tag${OFF}"
+	echo
+	echo "To try it: uses: luanpotter/dart-benchmark-action@$tag"
+	echo "To remove it: git push $remote --delete $tag"
+}
 
-# 8. Set 'is_major_release' variable
-latest_major_release_tag=$(expr "$latest_tag" : "$major_semver_tag_regex")
-new_major_release_tag=$(expr "$new_tag" : "$major_semver_tag_regex")
+next_version() {
+	local current="$1" bump="$2" major minor patch
+	IFS=. read -r major minor patch <<<"$current"
+	case "$bump" in
+	major) echo "$((major + 1)).0.0" ;;
+	minor) echo "$major.$((minor + 1)).0" ;;
+	patch) echo "$major.$minor.$((patch + 1))" ;;
+	*) fail "Unknown bump: $bump. Use patch, minor or major." ;;
+	esac
+}
 
-if ! [[ "$new_major_release_tag" = "$latest_major_release_tag" ]]; then
-	is_major_release='yes'
+ask_bump() {
+	local current="$1"
+	{
+		echo "The current version is $current."
+		echo "  patch: $(next_version "$current" patch)"
+		echo "  minor: $(next_version "$current" minor)"
+		echo "  major: $(next_version "$current" major)"
+	} >&2
+	local bump
+	read -r -p "How do you want to bump it? " bump
+	echo "$bump"
+}
+
+open_release_pr() {
+	[ "$(git branch --show-current)" = "$main" ] || fail "Run this from $main."
+	require_clean_tree
+	git fetch --quiet "$remote" "$main"
+	[ "$(git rev-parse HEAD)" = "$(git rev-parse "$remote/$main")" ] ||
+		fail "Your $main is not the same as $remote/$main."
+
+	local current version branch
+	current="$(node -p "require('./package.json').version")"
+	version="$(next_version "$current" "${1:-$(ask_bump "$current")}")"
+	branch="release/v$version"
+
+	script/check.sh
+
+	git switch --quiet --create "$branch"
+	npm version "$version" --no-git-tag-version >/dev/null
+	git add package.json package-lock.json
+	git commit --quiet --message "chore: Release $version"
+	git push "$remote" "$branch"
+	gh pr create --base "$main" --head "$branch" \
+		--title "chore: Release $version" \
+		--body "Merging this releases v$version."
+	git switch --quiet "$main"
+}
+
+if [ "${1:-}" = test ]; then
+	make_test_tag
 else
-	is_major_release='no'
+	open_release_pr "${1:-}"
 fi
-
-# 9. Point separate major release tag (e.g. v1, v2) to the new release
-if [ $is_major_release = 'yes' ]; then
-	# Create a new major version tag and point it to this release
-	git tag "$new_major_release_tag" --annotate --message "$new_major_release_tag Release"
-	echo -e "New major version tag: ${BOLD_GREEN}$new_major_release_tag${OFF}"
-else
-	# Update the major version tag to point it to this release
-	git tag "$latest_major_release_tag" --force --annotate --message "Sync $latest_major_release_tag tag with $new_tag"
-	echo -e "Synced ${BOLD_GREEN}$latest_major_release_tag${OFF} with ${BOLD_GREEN}$new_tag${OFF}"
-fi
-
-# 10. Push the new tags (with commits, if any) to remote
-git push --follow-tags
-
-if [ $is_major_release = 'yes' ]; then
-	# New major version tag is pushed with the '--follow-tags' flags
-	echo -e "Tags: ${BOLD_GREEN}$new_major_release_tag${OFF} and ${BOLD_GREEN}$new_tag${OFF} pushed to remote"
-else
-	# Force push the updated major version tag
-	git push $git_remote "$latest_major_release_tag" --force
-	echo -e "Tags: ${BOLD_GREEN}$latest_major_release_tag${OFF} and ${BOLD_GREEN}$new_tag${OFF} pushed to remote"
-fi
-
-# 11. If this is a major release, create a 'releases/v#' branch and push
-if [ $is_major_release = 'yes' ]; then
-	git branch "releases/$latest_major_release_tag" "$latest_major_release_tag"
-	echo -e "Branch: ${BOLD_BLUE}releases/$latest_major_release_tag${OFF} created from ${BOLD_BLUE}$latest_major_release_tag${OFF} tag"
-	git push --set-upstream $git_remote "releases/$latest_major_release_tag"
-	echo -e "Branch: ${BOLD_GREEN}releases/$latest_major_release_tag${OFF} pushed to remote"
-fi
-
-# Completed
-echo -e "${BOLD_GREEN}Done!${OFF}"

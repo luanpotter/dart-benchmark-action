@@ -131,6 +131,16 @@ To build, lint, and test locally, run:
   script/check.sh # --fix to fix
 ```
 
+## Releasing
+
+From main, use the release script to create a release PR:
+
+```bash
+  script/release # or: script/release patch|minor|major
+```
+
+This will trigger the compile and publish as GitHub Actions.
+
 ## Running Locally
 
 You can run the action on your machine with

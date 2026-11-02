@@ -26,10 +26,9 @@
 		"node": ">=24"
 	},
 	"scripts": {
-		"check": "npm run format:check && npm run lint && npm run biome && npm run typecheck && npm run test",
+		"check": "npm run format:check && npm run lint && npm run biome && npm run typecheck && npm run test && npm run package",
 		"biome": "npx biome format --error-on-warnings --no-errors-on-unmatched && npx biome lint --error-on-warnings --no-errors-on-unmatched",
 		"typecheck": "npx tsc --noEmit",
-		"ci-test": "NODE_OPTIONS=--experimental-vm-modules npx jest",
 		"coverage": "npx make-coverage-badge --output-path ./badges/coverage.svg",
 		"format:write": "npx prettier --write .",
 		"format:check": "npx prettier --check .",

@@ -81,6 +81,9 @@ typings/
 # vuepress build output
 .vuepress/dist
 
+# action build output, only committed on tags by script/release
+/dist/
+
 # Serverless directories
 .serverless/
 
