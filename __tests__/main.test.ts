@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { jest } from '@jest/globals';
@@ -7,6 +7,7 @@ import type { ExecOptions } from '@actions/exec';
 const getInput = jest.fn<(name: string) => string | undefined>();
 const getBooleanInput = jest.fn<(name: string) => boolean>();
 const info = jest.fn<(message: string) => void>();
+const warning = jest.fn<(message: string) => void>();
 const error = jest.fn<(message: string) => void>();
 const setFailed = jest.fn<(message: string) => void>();
 const summary = {
@@ -17,6 +18,7 @@ jest.unstable_mockModule('@actions/core', () => ({
 	getInput,
 	getBooleanInput,
 	info,
+	warning,
 	error,
 	setFailed,
 	summary,
@@ -39,8 +41,14 @@ jest.unstable_mockModule('@actions/github', () => ({ getOctokit, context }));
 const { run } = await import('../src/main.js');
 
 describe('running on pull_request', () => {
+	const originalDirectory = process.cwd();
 	let directory: string;
 	let resultsPath: string;
+
+	async function writePubspec(path: string, contents: string): Promise<void> {
+		await mkdir(path, { recursive: true });
+		await writeFile(join(path, 'pubspec.yaml'), contents);
+	}
 
 	beforeEach(async () => {
 		jest.resetAllMocks();
@@ -50,6 +58,10 @@ describe('running on pull_request', () => {
 
 		directory = await mkdtemp(join(tmpdir(), 'dart-benchmark-action-'));
 		resultsPath = join(directory, 'nested', 'results.json');
+
+		process.chdir(directory);
+		await writePubspec('packages/p1', 'name: p1\n');
+		await writePubspec('packages/p2', 'name: p2\n');
 
 		context.eventName = 'pull_request';
 		context.payload = {
@@ -63,7 +75,47 @@ describe('running on pull_request', () => {
 	});
 
 	afterEach(async () => {
+		process.chdir(originalDirectory);
 		await rm(directory, { recursive: true });
+	});
+
+	it('should read the project name from the pubspec, however it is written', async () => {
+		await writePubspec(
+			'packages/p1',
+			"version: 1.0.0\nname: 'quoted' # note\n",
+		);
+		mockActionInput({ paths: 'packages/p1' });
+		mockCommandOutputs({});
+
+		await run();
+
+		expect(JSON.parse(await readFile(resultsPath, 'utf8'))).toMatchObject({
+			projects: [{ name: 'quoted' }],
+		});
+	});
+
+	it('should quote the paths in commands', async () => {
+		await writePubspec("packages/my p1's", 'name: p1\n');
+		mockActionInput({
+			paths: "packages/my p1's",
+			buildCommand: 'make codegen',
+		});
+		mockCommandOutputs({});
+
+		await run();
+
+		expectExec("(cd 'packages/my p1'\\''s' ; make codegen)");
+		expectExec("(cd 'packages/my p1'\\''s' ; dart run benchmark/main.dart)");
+	});
+
+	it('should fail with whatever was thrown, even if it is not an error', async () => {
+		mockActionInput({ paths: 'packages/p1' });
+		mockCommandOutputs({});
+		summary.write.mockRejectedValue('not an error');
+
+		await run();
+
+		expect(setFailed).toHaveBeenCalledWith('not an error');
 	});
 
 	it('should fetch inputs and execute benchmarks on both branches', async () => {
@@ -77,17 +129,9 @@ describe('running on pull_request', () => {
 
 		await run();
 
-		// name extraction
-		expectExec(
-			'(cd packages/p1 ; cat pubspec.yaml | grep "^name:"| perl -pe \'s/^name: (.*)$/$1/\')',
-		);
-		expectExec(
-			'(cd packages/p2 ; cat pubspec.yaml | grep "^name:"| perl -pe \'s/^name: (.*)$/$1/\')',
-		);
-
 		// benchmark execution
-		expectExec('(cd packages/p1 ; dart run benchmark/main.dart)');
-		expectExec('(cd packages/p2 ; dart run benchmark/main.dart)');
+		expectExec("(cd 'packages/p1' ; dart run benchmark/main.dart)");
+		expectExec("(cd 'packages/p2' ; dart run benchmark/main.dart)");
 
 		expect(summary.addRaw).toHaveBeenCalledWith(
 			[
@@ -222,17 +266,17 @@ describe('running on pull_request', () => {
 		await run();
 
 		const commands = mockExec.mock.calls.map(([, args]) => args[1]);
-		expect(commands.slice(2)).toEqual([
-			'(cd packages/p1 ; make codegen)',
-			'(cd packages/p1 ; dart run benchmark/main.dart)',
-			'(cd packages/p2 ; make codegen)',
-			'(cd packages/p2 ; dart run benchmark/main.dart)',
+		expect(commands).toEqual([
+			"(cd 'packages/p1' ; make codegen)",
+			"(cd 'packages/p1' ; dart run benchmark/main.dart)",
+			"(cd 'packages/p2' ; make codegen)",
+			"(cd 'packages/p2' ; dart run benchmark/main.dart)",
 			'git fetch origin main',
 			'git checkout main',
-			'(cd packages/p1 ; make codegen)',
-			'(cd packages/p1 ; dart run benchmark/main.dart)',
-			'(cd packages/p2 ; make codegen)',
-			'(cd packages/p2 ; dart run benchmark/main.dart)',
+			"(cd 'packages/p1' ; make codegen)",
+			"(cd 'packages/p1' ; dart run benchmark/main.dart)",
+			"(cd 'packages/p2' ; make codegen)",
+			"(cd 'packages/p2' ; dart run benchmark/main.dart)",
 		]);
 		expect(summary.write).toHaveBeenCalledTimes(1);
 	});
@@ -300,13 +344,13 @@ describe('running on pull_request', () => {
 		await run();
 
 		const commands = mockExec.mock.calls.map(([, args]) => args[1]);
-		expect(commands.slice(2)).toEqual([
-			'(cd packages/p1 ; dart compile exe bench.dart -o /tmp/bench && /tmp/bench)',
-			'(cd packages/p2 ; dart compile exe bench.dart -o /tmp/bench && /tmp/bench)',
+		expect(commands).toEqual([
+			"(cd 'packages/p1' ; dart compile exe bench.dart -o /tmp/bench && /tmp/bench)",
+			"(cd 'packages/p2' ; dart compile exe bench.dart -o /tmp/bench && /tmp/bench)",
 			'git fetch origin main',
 			'git checkout main',
-			'(cd packages/p1 ; dart compile exe bench.dart -o /tmp/bench && /tmp/bench)',
-			'(cd packages/p2 ; dart compile exe bench.dart -o /tmp/bench && /tmp/bench)',
+			"(cd 'packages/p1' ; dart compile exe bench.dart -o /tmp/bench && /tmp/bench)",
+			"(cd 'packages/p2' ; dart compile exe bench.dart -o /tmp/bench && /tmp/bench)",
 		]);
 		expect(summary.addRaw).toHaveBeenCalledWith(
 			[
@@ -354,13 +398,8 @@ describe('running on pull_request', () => {
 
 		await run();
 
-		// name extraction
-		expectExec(
-			'(cd packages/p1 ; cat pubspec.yaml | grep "^name:"| perl -pe \'s/^name: (.*)$/$1/\')',
-		);
-
 		// benchmark execution
-		expectExec('(cd packages/p1 ; dart run benchmark/main.dart)');
+		expectExec("(cd 'packages/p1' ; dart run benchmark/main.dart)");
 
 		expect(summary.addRaw).toHaveBeenCalledWith(
 			[
@@ -392,20 +431,12 @@ describe('running on pull_request', () => {
 
 		await run();
 
-		// name extraction
-		expectExec(
-			'(cd packages/p1 ; cat pubspec.yaml | grep "^name:"| perl -pe \'s/^name: (.*)$/$1/\')',
-		);
-		expectExec(
-			'(cd packages/p2 ; cat pubspec.yaml | grep "^name:"| perl -pe \'s/^name: (.*)$/$1/\')',
-		);
-
 		// benchmark execution
 		expectExec(
-			'(cd packages/p1 ; flutter test benchmark/main.dart -r silent) 2>/dev/null || true',
+			"(cd 'packages/p1' ; flutter test benchmark/main.dart -r silent) 2>/dev/null || true",
 		);
 		expectExec(
-			'(cd packages/p2 ; flutter test benchmark/main.dart -r silent) 2>/dev/null || true',
+			"(cd 'packages/p2' ; flutter test benchmark/main.dart -r silent) 2>/dev/null || true",
 		);
 
 		expect(summary.addRaw).toHaveBeenCalledWith(
@@ -434,23 +465,20 @@ describe('running on pull_request', () => {
 	});
 
 	it('should handle package name resolution failure gracefully', async () => {
+		await rm('packages/p1/pubspec.yaml');
+		await writePubspec('packages/p2', 'version: 1.0.0\n');
 		mockActionInput({ paths: 'packages/p1,packages/p2' });
-		mockCommandOutputs(
-			{
-				'main/p1': 'Template(RunTime): 100.123 us.',
-				'main/p2': 'Template(RunTime): 200.456 us.',
-				'feature-branch/p1': 'Template(RunTime): 100.456 us.',
-				'feature-branch/p2': 'Template(RunTime): 200.123 us.',
-			},
-			{
-				failPackageNameResolution: true,
-			},
-		);
+		mockCommandOutputs({
+			'main/p1': 'Template(RunTime): 100.123 us.',
+			'main/p2': 'Template(RunTime): 200.456 us.',
+			'feature-branch/p1': 'Template(RunTime): 100.456 us.',
+			'feature-branch/p2': 'Template(RunTime): 200.123 us.',
+		});
 
 		await run();
 
-		expectExec('(cd packages/p1 ; dart run benchmark/main.dart)');
-		expectExec('(cd packages/p2 ; dart run benchmark/main.dart)');
+		expectExec("(cd 'packages/p1' ; dart run benchmark/main.dart)");
+		expectExec("(cd 'packages/p2' ; dart run benchmark/main.dart)");
 
 		expect(summary.addRaw).toHaveBeenCalledWith(
 			[
@@ -530,9 +558,9 @@ describe('running on pull_request', () => {
 
 		await run();
 
-		// name extraction, head benchmark, git fetch, git checkout, base benchmark
+		// head benchmark, git fetch, git checkout, base benchmark
 		expect(mockExec.mock.calls.map(([, , options]) => options.env)).toEqual(
-			Array(5).fill({ ...process.env }),
+			Array(4).fill({ ...process.env }),
 		);
 	});
 
@@ -576,11 +604,10 @@ describe('running on pull_request', () => {
 	function mockCommandOutputs(
 		results: Record<string, string>,
 		options: {
-			failPackageNameResolution?: boolean;
 			failBuildOn?: 'feature-branch' | 'main';
 		} = {},
 	): void {
-		const { failPackageNameResolution = false, failBuildOn } = options;
+		const { failBuildOn } = options;
 
 		let isMain = false;
 		mockExec.mockImplementation(async (_, args, execOptions) => {
@@ -600,12 +627,6 @@ describe('running on pull_request', () => {
 				const branch = isMain ? 'main' : 'feature-branch';
 				const key = `${branch}/${project}`;
 				response = results[key];
-			} else if (command.startsWith('(cd ')) {
-				// package name command
-				if (failPackageNameResolution) {
-					return Promise.resolve(1);
-				}
-				response = project;
 			}
 			if (response !== undefined) {
 				execOptions.listeners?.stdout?.(Buffer.from(response));

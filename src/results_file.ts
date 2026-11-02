@@ -2,7 +2,12 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { Project } from './action_context.js';
 import { CommentFormatter } from './comment_formatter.js';
-import { BenchmarkResults, ResultMap } from './result_map.js';
+import {
+	BenchmarkResults,
+	maxNameLength,
+	ResultMap,
+	reservedNames,
+} from './result_map.js';
 
 export type ResultsFile = {
 	version: 1;
@@ -18,8 +23,6 @@ export type ResultsFile = {
 const maxFileLength = 1_000_000;
 const maxProjects = 50;
 const maxBenchmarks = 500;
-const maxNameLength = 100;
-const reservedNames = new Set(['__proto__', 'constructor', 'prototype']);
 
 export function toResultsFile(
 	projects: Project[],
@@ -30,7 +33,7 @@ export function toResultsFile(
 	return {
 		version: 1,
 		projects: projects.map(project => ({
-			name: project.identifier(),
+			name: project.identifier().slice(0, maxNameLength),
 			head: results.get(project, 'head').scores(),
 			base: results.get(project, 'base').scores(),
 		})),
@@ -117,8 +120,7 @@ function parseName(name: unknown): string {
 	if (
 		typeof name !== 'string' ||
 		name.length === 0 ||
-		name.length > maxNameLength ||
-		reservedNames.has(name)
+		name.length > maxNameLength
 	) {
 		throw new Error('Invalid results file: unexpected name.');
 	}
@@ -133,6 +135,10 @@ function parseScores(scores: unknown): Record<string, number> {
 		Object.entries(scores).map(([name, score]) => {
 			if (typeof score !== 'number' || !Number.isFinite(score) || score < 0) {
 				throw new Error('Invalid results file: unexpected score.');
+			}
+			// these become object keys
+			if (reservedNames.has(name)) {
+				throw new Error('Invalid results file: unexpected name.');
 			}
 			return [parseName(name), score];
 		}),

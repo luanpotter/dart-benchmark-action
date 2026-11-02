@@ -279,6 +279,33 @@ describe('CommentFormatter', () => {
 		expect(result).toBe(expected.join('\n'));
 	});
 
+	it('multiple projects, averages only the benchmarks with a diff', () => {
+		const p1 = new Project('packages/p1', 'p1');
+		const p2 = new Project('packages/p2', 'p2');
+
+		const results = new ResultMap();
+		results.set(
+			p1,
+			'head',
+			BenchmarkResults.success(
+				['Both(RunTime): 110 us.', 'New(RunTime): 5 us.'].join('\n'),
+			),
+		);
+		results.set(p1, 'base', BenchmarkResults.success('Both(RunTime): 100 us.'));
+		results.set(p2, 'head', BenchmarkResults.success('New(RunTime): 5 us.'));
+		results.set(p2, 'base', BenchmarkResults.error());
+
+		const result = new CommentFormatter(
+			[p1, p2],
+			'feature',
+			'main',
+			results,
+		).format();
+
+		expect(result).toContain('Package <b>p1</b>: 🔴 +10.000 %');
+		expect(result).toContain('Package <b>p2</b>: [-]');
+	});
+
 	it('single project, error diff', () => {
 		const project = new Project('.', 'my-project');
 
@@ -299,7 +326,7 @@ describe('CommentFormatter', () => {
 			'## Benchmark Results',
 			'',
 			'> [!WARNING]',
-			'No benchmark results found for package my-project.',
+			'> No benchmark results found for package my-project.',
 			'',
 			'---',
 			'_Benchmarks provided with 💙 by [Dart Benchmark Action](https://github.com/luanpotter/dart-benchmark-action/)._',

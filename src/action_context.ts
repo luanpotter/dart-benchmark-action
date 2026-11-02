@@ -1,7 +1,7 @@
 export class Project {
 	path: string;
-	// Script might fail to find the project name; in which case the path
-	// will be used as display name.
+	// The pubspec might not have a name, in which case the path will be used as
+	// display name.
 	name: string | undefined;
 
 	constructor(path: string, name: string | undefined) {
@@ -20,6 +20,6 @@ export type RunContext = {
 	buildCommand: string | undefined;
 	runCommand: string | undefined;
 	projects: Project[];
-	currentBranch: string;
+	headBranch: string;
 	baseBranch: string;
 };
