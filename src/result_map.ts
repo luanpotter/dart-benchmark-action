@@ -1,10 +1,13 @@
 import * as core from '@actions/core';
 import type { Project } from './action_context.js';
 
+export const maxNameLength = 100;
+export const reservedNames = new Set(['__proto__', 'constructor', 'prototype']);
+
 export type BenchmarkDiff = {
 	benchmark: string;
-	scoreA: number | undefined;
-	scoreB: number | undefined;
+	headScore: number | undefined;
+	baseScore: number | undefined;
 	diff: number | undefined;
 };
 
@@ -20,24 +23,25 @@ export class BenchmarkResults {
 	// The output will be in the format:
 	// Iteration Benchmark(RunTime): 155.3733089882978 us.
 	// Other Benchmark(RunTime): 22.426620587035305 us.
+	// Anything else is ignored. What this keeps is also what the reporter accepts, so
+	// that one odd benchmark does not cost the comment for all the others.
 	private static parseOutput(output: string): Record<string, number> {
-		const entries = output
-			.trim()
-			.split('\n')
-			.map(line => line.trim())
-			.filter(line => line.match(/^.*\(RunTime\): .* us.$/));
-
 		const results: Record<string, number> = {};
-		for (const entry of entries) {
-			try {
-				const [p1, p2] = entry.split(': ');
-				const name = p1.replace(/\(RunTime\)$/, '');
-				const value = parseFloat(p2.replace(' us.', ''));
-				core.info(`Parsed benchmark: ${name} -> ${value}`);
-				results[name] = value;
-			} catch {
-				core.error(`Failed to parse benchmark output: \`${output}\``);
+		for (const line of output.split('\n')) {
+			const match = /^(.+)\(RunTime\): (\S+) us\.$/.exec(line.trim());
+			if (!match) {
+				continue;
 			}
+
+			const name = match[1].slice(0, maxNameLength);
+			const value = Number(match[2]);
+			if (reservedNames.has(name) || !Number.isFinite(value) || value < 0) {
+				core.warning(`Ignoring unexpected benchmark: ${line.trim()}`);
+				continue;
+			}
+
+			core.info(`Parsed benchmark: ${name} -> ${value}`);
+			results[name] = value;
 		}
 		return results;
 	}
@@ -67,25 +71,27 @@ export class BenchmarkResults {
 	}
 
 	static computeDiffs(
-		a: BenchmarkResults,
-		b: BenchmarkResults,
+		head: BenchmarkResults,
+		base: BenchmarkResults,
 	): BenchmarkDiff[] {
-		const allBenchmarks = [...new Set([...a.benchmarks(), ...b.benchmarks()])];
+		const allBenchmarks = [
+			...new Set([...head.benchmarks(), ...base.benchmarks()]),
+		];
 		core.info(`Compiling diffs for benchmarks: ${allBenchmarks.join(', ')}`);
 		return allBenchmarks.map(benchmark => {
-			const scoreA = a.getScore(benchmark);
-			const scoreB = b.getScore(benchmark);
+			const headScore = head.getScore(benchmark);
+			const baseScore = base.getScore(benchmark);
 
 			let diff: number | undefined;
-			if (scoreA === undefined || scoreB === undefined) {
+			if (headScore === undefined || baseScore === undefined) {
 				diff = undefined;
 			} else {
-				diff = ((scoreA - scoreB) / scoreB) * 100;
+				diff = ((headScore - baseScore) / baseScore) * 100;
 			}
 			return {
 				benchmark,
-				scoreA,
-				scoreB,
+				headScore,
+				baseScore,
 				diff,
 			};
 		});

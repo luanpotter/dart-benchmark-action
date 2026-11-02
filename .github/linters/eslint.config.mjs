@@ -31,6 +31,13 @@ export default [
 	{
 		...jest.configs['flat/recommended'],
 		files: ['__tests__/**/*.ts'],
+		rules: {
+			...jest.configs['flat/recommended'].rules,
+			'jest/expect-expect': [
+				'warn',
+				{ assertFunctionNames: ['expect', 'expectExec'] },
+			],
+		},
 	},
 	{
 		files: ['**/*.ts'],

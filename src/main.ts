@@ -24,7 +24,7 @@ export async function run(): Promise<void> {
 			);
 		}
 	} catch (error) {
-		if (error instanceof Error) core.setFailed(error.message);
+		core.setFailed(error instanceof Error ? error.message : String(error));
 	}
 }
 
@@ -46,7 +46,7 @@ async function runOnPullRequest(): Promise<void> {
 	const results = await runAllBenchmarks(context);
 	const resultsFile = toResultsFile(
 		context.projects,
-		context.currentBranch,
+		context.headBranch,
 		context.baseBranch,
 		results,
 	);
@@ -88,7 +88,7 @@ async function buildRunContext(): Promise<RunContext | undefined> {
 
 	// we need unsafe member access because typescript...
 	// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-	const currentBranch: string = pullRequest.head.ref as string;
+	const headBranch: string = pullRequest.head.ref as string;
 	// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
 	const baseBranch: string = pullRequest.base.ref as string;
 
@@ -103,7 +103,7 @@ async function buildRunContext(): Promise<RunContext | undefined> {
 		buildCommand,
 		runCommand,
 		projects,
-		currentBranch,
+		headBranch,
 		baseBranch,
 	};
 }

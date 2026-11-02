@@ -3,7 +3,7 @@ import type { BenchmarkDiff, ResultMap } from './result_map.js';
 
 export class CommentFormatter {
 	private projects: Project[];
-	private currentBranch: string;
+	private headBranch: string;
 	private baseBranch: string;
 
 	private results: ResultMap;
@@ -12,12 +12,12 @@ export class CommentFormatter {
 
 	constructor(
 		projects: Project[],
-		currentBranch: string,
+		headBranch: string,
 		baseBranch: string,
 		results: ResultMap,
 	) {
 		this.projects = projects;
-		this.currentBranch = currentBranch;
+		this.headBranch = headBranch;
 		this.baseBranch = baseBranch;
 
 		this.results = results;
@@ -72,8 +72,12 @@ export class CommentFormatter {
 			return;
 		}
 
+		// a benchmark on only one side has no diff, and says nothing about the average
+		const known = diffs.flatMap(({ diff }) => diff ?? []);
 		const average =
-			diffs.reduce((acc, diff) => acc + (diff?.diff ?? 0), 0) / diffs.length;
+			known.length > 0
+				? known.reduce((acc, diff) => acc + diff, 0) / known.length
+				: undefined;
 
 		this.output.push(
 			`<details>`,
@@ -93,7 +97,7 @@ export class CommentFormatter {
 	private renderNoDiffsWarning(project: Project): void {
 		this.output.push(
 			'> [!WARNING]',
-			`No benchmark results found for package ${project.identifier()}.`,
+			`> No benchmark results found for package ${project.identifier()}.`,
 		);
 	}
 
@@ -104,8 +108,8 @@ export class CommentFormatter {
 		 * * Diff: -1.724 %
 		 */
 		this.output.push(
-			` * Current Branch [${this.currentBranch}]: ${this.formatScore(diff.scoreA)}`,
-			` * Base Branch [${this.baseBranch}]: ${this.formatScore(diff.scoreB)}`,
+			` * Current Branch [${this.headBranch}]: ${this.formatScore(diff.headScore)}`,
+			` * Base Branch [${this.baseBranch}]: ${this.formatScore(diff.baseScore)}`,
 			` * Diff: ${this.formatPercentage(diff.diff)}`,
 		);
 	}
@@ -120,7 +124,7 @@ export class CommentFormatter {
 		this.output.push(
 			this.tabulate([
 				'Benchmarks',
-				`Current Branch<br/>[${this.currentBranch}]`,
+				`Current Branch<br/>[${this.headBranch}]`,
 				`Base Branch<br/>[${this.baseBranch}]`,
 				'Diff',
 			]),
@@ -130,8 +134,8 @@ export class CommentFormatter {
 			this.output.push(
 				this.tabulate([
 					diff.benchmark,
-					this.formatScore(diff.scoreA),
-					this.formatScore(diff.scoreB),
+					this.formatScore(diff.headScore),
+					this.formatScore(diff.baseScore),
 					this.formatPercentage(diff.diff),
 				]),
 			);
